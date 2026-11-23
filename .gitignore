@@ -1,0 +1,5 @@
+﻿.claude/
+*.xlsx
+*.csv
+_*.html
+
