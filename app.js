@@ -851,12 +851,30 @@ function viewLow(v) {
   v.onclick = e => {
     if (e.target.closest('#lowCard')) { S.lowOnly = true; $('#lowOnly').checked = true; return draw(); }
     const a = e.target.closest('[data-adj]'); if (a) return adjustForm(itemById(+a.dataset.adj));
-    if (e.target.closest('#shareLow')) shareText(
-      `*${C.SHOP_NAME} - To order* (${new Date().toLocaleDateString('en-GB')})\n` +
-      low.sort((a, b) => a.stock - b.stock).map(i => `• ${i.name}${i.company ? ' (' + i.company + ')' : ''} — left ${i.stock <= 0 ? '0' : fmtQty(i.stock, i.unit)}`).join('\n'));
+    if (e.target.closest('#shareLow')) shareText(lowStockMessage(low));
   };
   loadMoves();
 }
+// WhatsApp ke liye saaf order list: khatam aur kam alag, category ke hisaab se
+function lowStockMessage(low) {
+  const label = i => i.name + (i.company && !i.name.toLowerCase().includes(i.company.toLowerCase()) ? ` (${i.company})` : '');
+  let n = 0;
+  const section = (title, list, withQty) => {
+    if (!list.length) return '';
+    const groups = {};
+    list.forEach(i => { (groups[i.category || 'Other'] = groups[i.category || 'Other'] || []).push(i); });
+    return `\n${title} (${list.length})\n` + Object.keys(groups).sort().map(cat =>
+      `\n_${cat}_\n` + groups[cat].sort((a, b) => a.name.localeCompare(b.name))
+        .map(i => `${++n}. ${label(i)}${withQty ? `  —  *${fmtQty(i.stock, i.unit)}* left` : ''}`).join('\n')).join('\n') + '\n';
+  };
+  const out = low.filter(i => i.stock <= 0), few = low.filter(i => i.stock > 0);
+  const line = '━━━━━━━━━━━━━━';
+  return `*❄ ${C.SHOP_NAME} — ${C.SHOP_SUB}*\n*Order List* · ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n${line}\n` +
+    section('🔴 *OUT OF STOCK*', out, false) +
+    section('🟡 *RUNNING LOW*', few, true) +
+    `${line}\nTotal: *${low.length} item${low.length === 1 ? '' : 's'}*`;
+}
+
 async function loadMoves() {
   const box = $('#moves');
   const [sl, pu, ad] = await Promise.all([
