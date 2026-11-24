@@ -89,6 +89,9 @@ async function init() {
   sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_KEY);
   sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT') showLogin(); });
   const { data: { session } } = await sb.auth.getSession();
+  // "Remember me" band tha aur browser dobara khula: logout
+  let live = false; try { live = !!sessionStorage.getItem('cc_live'); } catch (_) {}
+  if (session && store.get('cc_forget') && !live) { await sb.auth.signOut(); return showLogin(); }
   if (session) await afterLogin(session.user); else showLogin();
 }
 
@@ -103,29 +106,92 @@ document.addEventListener('visibilitychange', async () => {
 function showLogin() {
   S.user = null; S.profile = null; S.cart = [];
   closeModal();
+  const savedEmail = store.get('cc_email') || '';
   app.innerHTML = `
-  <div class="login-wrap"><div class="card login">
-    <div class="logo big">❄</div>
-    <h1>${esc(C.SHOP_NAME)}</h1>
-    <small>${esc(C.SHOP_SUB)} · ${esc(C.SHOP_TAG)}</small>
-    <form id="loginForm">
-      <label>Email<input type="email" name="email" required autocomplete="username"></label>
-      <label>Password<input type="password" name="password" required autocomplete="current-password"></label>
-      <button class="btn primary big" type="submit">Login</button>
-    </form>
-  </div></div>`;
+  <div class="lg-page">
+    <div class="lg-hero">
+      <img class="lg-scene" src="img/shop.svg" alt="">
+      <div class="lg-shade"></div>
+      <div class="lg-snow" id="lgSnow"></div>
+      <div class="lg-badge lg-b1"><span class="lg-dot"></span><div><b>Live</b><br>Stock update</div></div>
+      <div class="lg-badge lg-b2">❄ <div><b>16°C</b><br>Cool Care</div></div>
+      <div class="lg-brand">
+        <div class="lg-logo"><span>❄</span></div>
+        <div><h2>${esc(C.SHOP_NAME)}</h2><small>${esc(C.SHOP_SUB)} · ${esc(C.SHOP_TAG)}</small></div>
+      </div>
+      <svg class="lg-wave" viewBox="0 0 380 46" preserveAspectRatio="none" aria-hidden="true"><path d="M0 26 C70 2 130 44 200 24 C270 4 320 30 380 16 L380 46 L0 46 Z"/></svg>
+      <svg class="lg-wave-v" viewBox="0 0 46 380" preserveAspectRatio="none" aria-hidden="true"><path d="M26 0 C2 70 44 130 24 200 C4 270 30 320 16 380 L46 380 L46 0 Z"/></svg>
+    </div>
+    <div class="lg-side">
+      <form class="lg-form" id="loginForm" autocomplete="on">
+        <p class="lg-hello">Welcome back 👋</p>
+        <p class="lg-sub" id="lgSub">Sign in to your owner account</p>
+        <div class="lg-seg" id="lgSeg"><span class="lg-pill"></span>
+          <button type="button" class="on" data-r="owner">👑 Owner</button><button type="button" data-r="cashier">🧾 Cashier</button></div>
+        <label class="lg-fld"><span class="lg-ic">✉️</span>
+          <input type="email" name="email" required autocomplete="username" placeholder="Email" value="${esc(savedEmail)}"></label>
+        <label class="lg-fld"><span class="lg-ic">🔒</span>
+          <input type="password" name="password" required autocomplete="current-password" placeholder="Password">
+          <button type="button" class="lg-eye" id="lgEye" aria-label="Show password" title="Show password">👁</button></label>
+        <div class="lg-row">
+          <label><input type="checkbox" name="remember" ${store.get('cc_forget') ? '' : 'checked'}> Remember me</label>
+          <a href="#" id="lgForgot">Forgot password?</a>
+        </div>
+        <button class="lg-btn" type="submit"><span id="lgBtnTxt">Login</span><span class="lg-arr">→</span></button>
+        <div class="lg-foot">🔐 Secure login · <b>${esc(C.SHOP_NAME)}</b> ${esc(C.SHOP_SUB)}</div>
+      </form>
+    </div>
+  </div>`;
+  // girti barf
+  const snow = $('#lgSnow');
+  for (let i = 0; i < 20; i++) {
+    const s = document.createElement('i'); s.textContent = '❄';
+    s.style.left = Math.random() * 100 + '%'; s.style.fontSize = (7 + Math.random() * 12) + 'px';
+    s.style.opacity = (0.35 + Math.random() * 0.55).toFixed(2);
+    s.style.animationDuration = (6 + Math.random() * 7) + 's'; s.style.animationDelay = (-Math.random() * 12) + 's';
+    snow.appendChild(s);
+  }
+  // Owner / Cashier (sirf dikhawa; asal role database se aata hai)
+  $('#lgSeg').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $('#lgSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    $('#lgSeg').classList.toggle('c', b.dataset.r === 'cashier');
+    $('#lgSub').textContent = `Sign in to your ${b.dataset.r} account`;
+  };
+  $('#lgEye').onclick = () => {
+    const p = $('#loginForm').password, show = p.type === 'password';
+    p.type = show ? 'text' : 'password';
+    $('#lgEye').textContent = show ? '🙈' : '👁';
+    $('#lgEye').setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  };
+  $('#lgForgot').onclick = e => {
+    e.preventDefault();
+    openModal(`<h3>Forgot password?</h3><p class="muted">Contact the owner. The owner can set a new password for you from Supabase → Authentication → Users.</p>
+      <div class="modal-actions"><button class="btn primary" data-close>OK</button></div>`);
+  };
   $('#loginForm').onsubmit = async e => {
     e.preventDefault();
-    const f = new FormData(e.target), btn = e.target.querySelector('button');
-    btn.disabled = true; btn.textContent = 'Logging in...';
-    const { data, error } = await sb.auth.signInWithPassword({ email: f.get('email').trim(), password: f.get('password') });
+    const f = new FormData(e.target), btn = e.target.querySelector('.lg-btn'), txt = $('#lgBtnTxt');
+    btn.disabled = true; txt.textContent = 'Logging in...';
+    const email = f.get('email').trim();
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: f.get('password') });
     if (error) {
-      btn.disabled = false; btn.textContent = 'Login';
+      btn.disabled = false; txt.textContent = 'Login';
       return toast(/invalid/i.test(error.message) ? 'Wrong email or password' : errMsg(error), 'bad');
     }
+    // Remember me: email yaad rakho; na ho to browser band hone par logout
+    if (f.get('remember')) { store.set('cc_email', email); store.del('cc_forget'); }
+    else { store.del('cc_email'); store.set('cc_forget', '1'); }
+    try { sessionStorage.setItem('cc_live', '1'); } catch (_) {}
     await afterLogin(data.user);
   };
 }
+// localStorage kabhi kabhi band hota hai (private window) — is liye try/catch
+const store = {
+  get: k => { try { return localStorage.getItem(k); } catch (_) { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} },
+  del: k => { try { localStorage.removeItem(k); } catch (_) {} }
+};
 
 async function afterLogin(user) {
   S.user = user;
@@ -851,7 +917,7 @@ function viewLow(v) {
   v.onclick = e => {
     if (e.target.closest('#lowCard')) { S.lowOnly = true; $('#lowOnly').checked = true; return draw(); }
     const a = e.target.closest('[data-adj]'); if (a) return adjustForm(itemById(+a.dataset.adj));
-    if (e.target.closest('#shareLow')) shareText(lowStockMessage(low));
+    if (e.target.closest('#shareLow')) showLowStockShare(low);
   };
   loadMoves();
 }
@@ -873,6 +939,127 @@ function lowStockMessage(low) {
     section('🔴 *OUT OF STOCK*', out, false) +
     section('🟡 *RUNNING LOW*', few, true) +
     `${line}\nTotal: *${low.length} item${low.length === 1 ? '' : 's'}*`;
+}
+
+/* ----- Kam stock ki PICTURE (design/low-stock-picture.svg ke mutabiq) ----- */
+function lowStockPicture(low) {
+  const W = 720, PAD = 36, CW = 648;               // design ki chaurai
+  const out = low.filter(i => i.stock <= 0).sort((a, b) => a.name.localeCompare(b.name));
+  const few = low.filter(i => i.stock > 0).sort((a, b) => a.stock / (a.min_stock || 1) - b.stock / (b.min_stock || 1));
+  const OUT_ROW = 54, LOW_ROW = 58, HEAD = 52;
+  const outH = out.length ? HEAD + out.length * OUT_ROW + 24 : 0;
+  const lowH = few.length ? HEAD + few.length * LOW_ROW + 22 : 0;
+  let H = 304 + outH + (outH && lowH ? 24 : 0) + lowH + 110;
+  // bohat lambi picture ho to resolution kam (browser ki had ~32k px)
+  const scale = H * 2 > 30000 ? 1 : 2;
+  const cv = document.createElement('canvas');
+  cv.width = W * scale; cv.height = H * scale;
+  const g = cv.getContext('2d');
+  g.scale(scale, scale);
+  const FONT = '"Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  const font = (size, weight = 400) => { g.font = `${weight} ${size}px ${FONT}`; };
+  const text = (s, x, y, size, color, weight = 400, align = 'left') => { font(size, weight); g.fillStyle = color; g.textAlign = align; g.fillText(s, x, y); };
+  const rrect = (x, y, w, h, r, color, stroke) => {
+    g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h);
+    if (color) { g.fillStyle = color; g.fill(); }
+    if (stroke) { g.strokeStyle = stroke; g.lineWidth = 1; g.stroke(); }
+  };
+  // lamba naam: pehle font chhota, phir bhi na aaye to "…"
+  const fitText = (s, x, y, maxW, color) => {
+    let size = 19;
+    font(size); while (g.measureText(s).width > maxW && size > 14) font(--size);
+    let t = s;
+    if (g.measureText(t).width > maxW) { while (t.length > 1 && g.measureText(t + '…').width > maxW) t = t.slice(0, -1); t += '…'; }
+    g.fillStyle = color; g.textAlign = 'left'; g.fillText(t, x, y);
+  };
+  const now = new Date();
+  const dateTxt = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const timeTxt = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+  g.fillStyle = '#f2f6fa'; g.fillRect(0, 0, W, H);
+  // header
+  const grad = g.createLinearGradient(0, 0, W, 170); grad.addColorStop(0, '#0b6fb8'); grad.addColorStop(1, '#16b3d9');
+  g.fillStyle = grad; g.fillRect(0, 0, W, 170);
+  rrect(36, 38, 64, 64, 18, '#fff');
+  text('❄', 68, 83, 38, '#0b6fb8', 400, 'center');
+  text(String(C.SHOP_NAME).toUpperCase(), 120, 66, 30, '#fff', 800);
+  text(`${C.SHOP_SUB} · ${C.SHOP_TAG}`, 120, 96, 19, '#dff3fb');
+  const pill = `📋 ORDER LIST · ${dateTxt}`;
+  font(17, 700); const pw = g.measureText(pill).width + 40;
+  rrect(36, 120, pw, 34, 17, 'rgba(255,255,255,.2)');
+  text(pill, 36 + pw / 2, 143, 17, '#fff', 700, 'center');
+  // tiles
+  [['Out of stock', out.length, '#fdecea', '#d92d20'], ['Running low', few.length, '#fff3dc', '#c77700'], ['Total items', low.length, '#e6f2fb', '#0b6fb8']]
+    .forEach(([t, n, bg, fg], k) => { const x = 36 + k * 224; rrect(x, 194, 200, 86, 16, bg); text(t, x + 20, 226, 16, fg); text(String(n), x + 20, 262, 32, fg, 800); });
+  // card ka sar (upar gol, neeche seedha)
+  const cardHead = (y, h, color, title) => {
+    rrect(PAD, y, CW, h, 18, '#fff', '#dde5ee');
+    rrect(PAD, y, CW, HEAD, 18, color); g.fillStyle = color; g.fillRect(PAD, y + 32, CW, 20);
+    text(title, 60, y + 34, 20, '#fff', 800);
+  };
+  let y = 304, n = 0;
+  if (out.length) {
+    cardHead(y, outH, '#d92d20', '🔴 OUT OF STOCK');
+    out.forEach((i, k) => {
+      const by = y + 90 + k * OUT_ROW;
+      // category pill ke saath right side par (zyada se zyada 130px), naam baqi jagah mein
+      let catW = 0;
+      if (i.category) {
+        font(15); let c = i.category;
+        if (g.measureText(c).width > 130) { while (c.length > 3 && g.measureText(c + '…').width > 130) c = c.slice(0, -1); c += '…'; }
+        catW = g.measureText(c).width;
+        text(c, 594, by, 15, '#64748b', 400, 'right');
+      }
+      fitText(`${++n}.  ${i.name}`, 60, by, 594 - catW - 16 - 60, '#14212e');
+      rrect(606, by - 20, 58, 28, 14, '#eef1f5'); text('0', 635, by, 14, '#64748b', 700, 'center');
+      if (k < out.length - 1) { g.strokeStyle = '#eef1f5'; g.beginPath(); g.moveTo(60, by + 20); g.lineTo(660, by + 20); g.stroke(); }
+    });
+    y += outH + (lowH ? 24 : 0);
+  }
+  if (few.length) {
+    cardHead(y, lowH, '#f08a00', '🟡 RUNNING LOW');
+    few.forEach((i, k) => {
+      const by = y + 90 + k * LOW_ROW;
+      fitText(`${++n}.  ${i.name}`, 60, by, 325, '#14212e');
+      text(`Min: ${trim3(i.min_stock)}${i.unit === 'piece' ? '' : ' ' + SHORT[i.unit]}`, 400, by, 14, '#64748b');
+      rrect(560, by - 20, 104, 28, 14, '#fdecea'); text(fmtQty(i.stock, i.unit), 612, by, 15, '#d92d20', 700, 'center');
+      rrect(60, by + 12, 600, 6, 3, '#eef1f5');
+      const p = Math.max(0.04, Math.min(1, i.stock / (i.min_stock || 1)));
+      rrect(60, by + 12, 600 * p, 6, 3, '#f08a00');
+    });
+    y += lowH;
+  }
+  // footer
+  text(`Made with Cool Care App · ${dateTxt}, ${timeTxt}`, W / 2, y + 46, 16, '#64748b', 400, 'center');
+  text(`❄ ${C.SHOP_NAME} ${C.SHOP_SUB}`, W / 2, y + 74, 14, '#94a3b8', 400, 'center');
+  return cv;
+}
+function showLowStockShare(low) {
+  const cv = lowStockPicture(low);
+  const fname = `order-list-${dayStr(new Date())}.png`;
+  const m = openModal(`
+    <h3>Order list</h3>
+    <div class="pic-preview"><img src="${cv.toDataURL('image/png')}" alt="Order list picture"></div>
+    <div class="modal-actions">
+      <button class="btn primary" id="sendPic">🖼 Send picture</button>
+      <button class="btn" id="sendTxt">📝 Send text</button>
+    </div>
+    <div class="modal-actions"><button class="btn" data-close>Close</button></div>`);
+  $('#sendTxt', m).onclick = () => shareText(lowStockMessage(low));
+  $('#sendPic', m).onclick = () => cv.toBlob(async blob => {
+    if (!blob) return toast('Could not make the picture', 'bad');
+    const file = new File([blob], fname, { type: 'image/png' });
+    // mobile: seedha share (WhatsApp), laptop: download
+    if (deviceType() === 'mobile' && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Order list' }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Picture downloaded. Attach it in WhatsApp.');
+  }, 'image/png');
 }
 
 async function loadMoves() {

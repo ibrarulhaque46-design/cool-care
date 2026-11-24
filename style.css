@@ -45,6 +45,87 @@ small { display: block; color: var(--muted); font-size: .82rem; }
 .login h1 { margin: 0; font-size: 1.4rem; }
 .login form { text-align: left; margin-top: 18px; }
 
+/* ===== Login (design/login-final.html) ===== */
+.lg-page { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: #f4f8fc;
+  font-family: Poppins, "Segoe UI", system-ui, sans-serif; color: #0f1b2b; }
+.lg-hero { position: relative; height: 360px; flex: none; overflow: hidden; background: #5d8db5; }
+.lg-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.06);
+  animation: lg-zoom 18s ease-in-out infinite alternate; }
+@keyframes lg-zoom { to { transform: scale(1.14) translateX(-10px); } }
+.lg-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5,40,80,.15) 0%, rgba(5,45,90,.35) 45%, rgba(6,55,105,.88) 100%); }
+.lg-snow { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.lg-snow i { position: absolute; top: -20px; color: #fff; font-style: normal; animation: lg-fall linear infinite; }
+@keyframes lg-fall { to { transform: translateY(110vh) rotate(360deg); } }
+.lg-badge { position: absolute; z-index: 3; background: rgba(255,255,255,.18); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,.35); border-radius: 14px; color: #fff; padding: 7px 11px; font-size: .72rem; line-height: 1.25;
+  display: flex; align-items: center; gap: 7px; animation: lg-float 4s ease-in-out infinite; }
+.lg-badge b { font-size: .95rem; }
+.lg-b1 { top: max(28px, env(safe-area-inset-top)); right: 16px; }
+.lg-b2 { top: 96px; left: 16px; animation-delay: 1.2s; }
+.lg-dot { width: 8px; height: 8px; border-radius: 50%; background: #2fd18a; box-shadow: 0 0 8px #2fd18a; }
+@keyframes lg-float { 50% { transform: translateY(-6px); } }
+.lg-brand { position: absolute; z-index: 3; left: 22px; right: 22px; bottom: 62px; color: #fff; display: flex; align-items: flex-end; gap: 14px; }
+.lg-logo { width: 62px; height: 62px; border-radius: 19px; flex: none; background: linear-gradient(145deg, #fff, #d6eefb); color: #0b6fb8;
+  display: grid; place-items: center; font-size: 34px; box-shadow: 0 10px 24px rgba(0,0,0,.3); }
+.lg-logo span { display: inline-block; animation: lg-spin 14s linear infinite; }
+@keyframes lg-spin { to { transform: rotate(360deg); } }
+.lg-brand h2 { margin: 0; font-size: 1.45rem; line-height: 1.1; font-weight: 800; letter-spacing: .2px; }
+.lg-brand small { color: #cfeafb; font-size: .78rem; margin-top: 3px; }
+.lg-wave { position: absolute; z-index: 4; left: 0; right: 0; bottom: -3px; width: 100%; height: 48px; fill: #f4f8fc; }
+.lg-wave-v { display: none; fill: #f4f8fc; }
+.lg-side { flex: 1; display: flex; justify-content: center; }
+.lg-form { width: 100%; max-width: 420px; padding: 4px 22px 18px; display: flex; flex-direction: column; position: relative; z-index: 5; }
+.lg-hello { margin: 0; font-size: 1.3rem; font-weight: 700; }
+.lg-sub { margin: 2px 0 16px; color: #64748b; font-size: .86rem; }
+.lg-seg { display: grid; grid-template-columns: 1fr 1fr; background: #e7eef6; border-radius: 14px; padding: 4px; margin-bottom: 16px; position: relative; }
+.lg-seg button { border: 0; background: none; padding: 9px; border-radius: 11px; font-weight: 600; font-size: .86rem; color: #64748b;
+  cursor: pointer; position: relative; z-index: 1; transition: color .2s; font-family: inherit; }
+.lg-seg button.on { color: #0b6fb8; }
+.lg-pill { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); background: #fff; border-radius: 11px;
+  box-shadow: 0 3px 10px rgba(10,40,80,.1); transition: transform .25s; }
+.lg-seg.c .lg-pill { transform: translateX(100%); }
+label.lg-fld { display: flex; align-items: center; gap: 11px; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 15px; padding: 0 15px;
+  margin: 0 0 12px; transition: .2s; color: inherit; font-size: 1rem; }
+.lg-fld:focus-within { border-color: #0b6fb8; box-shadow: 0 0 0 4px rgba(11,111,184,.12); }
+.lg-ic { width: 30px; height: 30px; border-radius: 9px; background: #e6f2fb; display: grid; place-items: center; font-size: .9rem; flex: none; }
+.lg-fld input { border: 0; outline: 0; background: none; padding: 15px 0; margin: 0; flex: 1; min-width: 0; width: auto; font-family: inherit; }
+.lg-fld input:focus { outline: 0; }
+.lg-eye { border: 0; background: none; cursor: pointer; font-size: 1rem; opacity: .6; padding: 6px; }
+.lg-eye:hover { opacity: 1; }
+.lg-row { display: flex; justify-content: space-between; align-items: center; font-size: .8rem; color: #64748b; margin: 2px 2px 16px; }
+.lg-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; font-size: .8rem; color: #64748b; }
+.lg-row input { width: auto; margin: 0; }
+.lg-row a { color: #0b6fb8; font-weight: 600; text-decoration: none; }
+.lg-btn { border: 0; border-radius: 16px; padding: 15px; font-weight: 700; font-size: 1rem; color: #fff; cursor: pointer; font-family: inherit;
+  background: linear-gradient(90deg, #0b6fb8, #16a6d1); box-shadow: 0 12px 26px rgba(11,111,184,.38);
+  display: flex; justify-content: center; align-items: center; gap: 10px; transition: transform .15s; }
+.lg-btn:active { transform: scale(.98); }
+.lg-btn:disabled { opacity: .7; cursor: wait; }
+.lg-arr { width: 26px; height: 26px; border-radius: 8px; background: rgba(255,255,255,.2); display: grid; place-items: center; }
+.lg-foot { margin-top: auto; padding-top: 22px; text-align: center; font-size: .72rem; color: #94a3b8; }
+.lg-foot b { color: #0b6fb8; }
+/* laptop: baen taraf photo, daen taraf form */
+@media (min-width: 900px) {
+  .lg-page { flex-direction: row; }
+  .lg-hero { height: auto; min-height: 100vh; flex: 1 1 55%; }
+  .lg-wave { display: none; }
+  .lg-wave-v { display: block; position: absolute; z-index: 4; top: 0; bottom: 0; right: -3px; width: 60px; height: 100%; }
+  .lg-brand { left: 48px; right: 80px; bottom: 56px; }
+  .lg-logo { width: 78px; height: 78px; font-size: 42px; border-radius: 22px; }
+  .lg-brand h2 { font-size: 2.2rem; }
+  .lg-brand small { font-size: .95rem; }
+  .lg-b1 { top: 40px; right: 90px; }
+  .lg-b2 { top: 120px; left: 48px; }
+  .lg-side { flex: 1 1 45%; align-items: center; }
+  .lg-form { padding: 40px 32px; min-height: 0; }
+  .lg-hello { font-size: 1.7rem; }
+  .lg-foot { margin-top: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-scene, .lg-logo span, .lg-badge, .lg-snow i { animation: none; }
+  .lg-snow { display: none; }
+}
+
 /* layout */
 .top { position: sticky; top: 0; z-index: 20; background: linear-gradient(120deg, var(--blue), var(--cyan)); color: #fff;
   display: flex; align-items: center; justify-content: space-between; padding: 10px 16px;
@@ -311,6 +392,10 @@ label.check input { width: auto; margin: 0; }
 .schip.amber { background: var(--amber-soft); color: var(--amber); }
 .schip.purple { background: var(--purple-soft); color: var(--purple); }
 kbd { font: inherit; font-size: .72rem; background: rgba(255,255,255,.25); border-radius: 5px; padding: 1px 6px; margin-left: 6px; }
+
+/* Order list picture preview */
+.pic-preview { max-height: 60vh; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #f2f6fa; margin-bottom: 4px; }
+.pic-preview img { display: block; width: 100%; height: auto; }
 
 /* Import bill */
 .file-btn { cursor: pointer; margin: 0; color: #fff; display: inline-block; }
