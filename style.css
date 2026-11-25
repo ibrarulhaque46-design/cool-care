@@ -102,6 +102,8 @@ label.lg-fld { display: flex; align-items: center; gap: 11px; background: #fff; 
 .lg-btn:active { transform: scale(.98); }
 .lg-btn:disabled { opacity: .7; cursor: wait; }
 .lg-arr { width: 26px; height: 26px; border-radius: 8px; background: rgba(255,255,255,.2); display: grid; place-items: center; }
+.lg-seg[hidden] { display: none; }
+.lg-switch { margin-top: 14px; text-align: center; font-size: .82rem; color: #0b6fb8; font-weight: 600; text-decoration: none; }
 .lg-foot { margin-top: auto; padding-top: 22px; text-align: center; font-size: .72rem; color: #94a3b8; }
 .lg-foot b { color: #0b6fb8; }
 /* laptop: baen taraf photo, daen taraf form */

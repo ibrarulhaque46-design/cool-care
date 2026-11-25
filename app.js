@@ -107,6 +107,8 @@ function showLogin() {
   S.user = null; S.profile = null; S.cart = [];
   closeModal();
   const savedEmail = store.get('cc_email') || '';
+  // is device par pichli dafa kis role ne login kiya tha (sirf dikhawa; asal ijazat database se)
+  const devRole = store.get('cc_role');
   app.innerHTML = `
   <div class="lg-page">
     <div class="lg-hero">
@@ -125,8 +127,8 @@ function showLogin() {
     <div class="lg-side">
       <form class="lg-form" id="loginForm" autocomplete="on">
         <p class="lg-hello">Welcome back 👋</p>
-        <p class="lg-sub" id="lgSub">Sign in to your owner account</p>
-        <div class="lg-seg" id="lgSeg"><span class="lg-pill"></span>
+        <p class="lg-sub" id="lgSub">Sign in to your ${devRole === 'cashier' ? 'cashier' : 'owner'} account</p>
+        <div class="lg-seg" id="lgSeg" ${devRole ? 'hidden' : ''}><span class="lg-pill"></span>
           <button type="button" class="on" data-r="owner">👑 Owner</button><button type="button" data-r="cashier">🧾 Cashier</button></div>
         <label class="lg-fld"><span class="lg-ic">✉️</span>
           <input type="email" name="email" required autocomplete="username" placeholder="Email" value="${esc(savedEmail)}"></label>
@@ -138,6 +140,7 @@ function showLogin() {
           <a href="#" id="lgForgot">Forgot password?</a>
         </div>
         <button class="lg-btn" type="submit"><span id="lgBtnTxt">Login</span><span class="lg-arr">→</span></button>
+        ${devRole ? '<a href="#" class="lg-switch" id="lgSwitch">Use a different account</a>' : ''}
         <div class="lg-foot">🔐 Secure login · <b>${esc(C.SHOP_NAME)}</b> ${esc(C.SHOP_SUB)}</div>
       </form>
     </div>
@@ -152,6 +155,9 @@ function showLogin() {
     snow.appendChild(s);
   }
   // Owner / Cashier (sirf dikhawa; asal role database se aata hai)
+  if ($('#lgSwitch')) $('#lgSwitch').onclick = e => {
+    e.preventDefault(); store.del('cc_role'); store.del('cc_email'); showLogin();
+  };
   $('#lgSeg').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
     $('#lgSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
@@ -166,7 +172,9 @@ function showLogin() {
   };
   $('#lgForgot').onclick = e => {
     e.preventDefault();
-    openModal(`<h3>Forgot password?</h3><p class="muted">Contact the owner. The owner can set a new password for you from Supabase → Authentication → Users.</p>
+    openModal(`<h3>Forgot password?</h3>
+      <p class="muted">Please contact the shop owner. They will set a new password for you.</p>
+      ${C.SHOP_PHONE ? `<p><b>📞 ${esc(C.SHOP_PHONE)}</b></p>` : ''}
       <div class="modal-actions"><button class="btn primary" data-close>OK</button></div>`);
   };
   $('#loginForm').onsubmit = async e => {
@@ -205,6 +213,7 @@ async function afterLogin(user) {
     return;
   }
   S.profile = data;
+  if (data.role === 'owner' || data.role === 'staff') store.set('cc_role', data.role === 'owner' ? 'owner' : 'cashier');
   if (data.role === 'pending') {
     app.innerHTML = `<div class="login-wrap"><div class="card login"><div class="logo big">⏳</div>
       <h1>Waiting for approval</h1><p class="muted">Your account is ready. Ask the owner to make you <b>Staff</b> in <b>Settings → Users</b>.</p>
@@ -263,7 +272,7 @@ function showApp() {
   <div class="shell">
   <aside class="side">
     <div class="side-brand"><div class="logo">❄</div><div><b>${esc(C.SHOP_NAME)}</b><small>${esc(C.SHOP_SUB)} · ${esc(C.SHOP_TAG)}</small></div></div>
-    ${SIDE.map(([g, list]) => { const l = list.filter(([k]) => canSee(k)); return l.length ? `<div class="side-group">${g}</div>` +
+    ${SIDE.map(([g, list]) => { const l = list.filter(([k]) => canSee(k)); return l.length ? `<div class="side-group">${g === 'Owner' && !isOwner() ? 'Account' : g}</div>` +
       l.map(([k, ic, t]) => `<button class="side-item" data-nav="${k}"><span>${ic}</span>${t}</button>`).join('') : ''; }).join('')}
     <div class="side-user"><div class="avatar">${esc(initials(p.full_name))}</div><div><b>${esc(p.full_name || '')}</b><small>${isOwner() ? 'Owner' : 'Staff'}</small></div></div>
   </aside>
