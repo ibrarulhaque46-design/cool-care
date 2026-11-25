@@ -384,8 +384,15 @@ label.check input { width: auto; margin: 0; }
 .who { display: flex; align-items: center; gap: 8px; }
 .who.big .avatar { width: 44px; height: 44px; }
 .avatar.sm { width: 28px; height: 28px; font-size: .72rem; }
-.filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
-.filters label { margin: 0; }
+.filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-bottom: 10px; }
+.filters label { margin: 0; min-width: 0; }
+/* mobile par date/select apni chaurai se bahar na niklein */
+.filters input, .filters select { min-width: 0; width: 100%; max-width: 100%; }
+@media (max-width: 759px) {
+  .chips { gap: 6px; }
+  .chip { padding: 6px 12px; font-size: .9rem; }
+  .filters input, .filters select { padding: 10px; font-size: 15px; }
+}
 .filters .grow { grid-column: 1 / -1; }
 .sum-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .schip { border-radius: 20px; padding: 4px 12px; font-size: .82rem; font-weight: 700; background: #eef1f5; color: var(--muted); }
