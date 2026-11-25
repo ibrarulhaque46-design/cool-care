@@ -473,6 +473,11 @@ kbd { font: inherit; font-size: .72rem; background: rgba(255,255,255,.25); borde
 .hint { margin-top: 6px; }
 .cust-sel { display: flex; align-items: center; gap: 10px; background: var(--blue-soft); border-radius: 12px; padding: 10px; }
 .cust-sel .btn { margin-left: auto; }
+.cust-acct { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  border: 1px dashed #c9d5e2; border-radius: 12px; padding: 10px 12px; }
+.acct-bal small { font-size: .75rem; }
+.acct-bal b { font-size: 1.15rem; display: block; }
+.acct-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 .sum-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
 .sum-row input { width: 120px; margin: 0; text-align: right; }
 .grand { background: #0f1b2a; color: #fff; border-radius: 14px; padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }

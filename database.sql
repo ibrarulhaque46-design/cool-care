@@ -111,6 +111,34 @@ create table if not exists public.stock_adjustments (
   reason      text
 );
 
+-- ---------- Version 3: Item return (maal wapis) ----------
+create table if not exists public.sale_returns (
+  id           bigint generated always as identity primary key,
+  created_at   timestamptz not null default now(),
+  created_by   uuid references public.profiles(id) default auth.uid(),
+  seller_name  text,                                   -- kis ne return liya
+  customer_id  bigint references public.customers(id),
+  payment      text not null default 'credit',         -- credit = khata kam, cash = paise wapis
+  total        numeric(14,2) not null default 0,
+  summary      text,
+  note         text
+);
+create table if not exists public.return_lines (
+  id            bigint generated always as identity primary key,
+  return_id     bigint not null references public.sale_returns(id) on delete cascade,
+  sale_line_id  bigint not null references public.sale_lines(id),
+  sale_id       bigint references public.sales(id),
+  item_id       bigint references public.items(id),
+  item_name     text,
+  qty           numeric(14,3) not null,                -- item ki asal unit mein
+  amount        numeric(14,2) not null,
+  cost          numeric(14,2) not null default 0
+);
+create index if not exists return_lines_line_idx  on public.return_lines(sale_line_id);
+create index if not exists return_lines_sale_idx  on public.return_lines(sale_id);
+create index if not exists sale_returns_cust_idx  on public.sale_returns(customer_id);
+create index if not exists sale_returns_time_idx  on public.sale_returns(created_at);
+
 create index if not exists sales_customer_idx     on public.sales(customer_id);
 create index if not exists khata_customer_idx     on public.khata_payments(customer_id);
 create index if not exists adjust_created_idx     on public.stock_adjustments(created_at);
@@ -182,6 +210,16 @@ create policy khata_owner on public.khata_payments for all to authenticated
   using (public.my_role() = 'owner') with check (public.my_role() = 'owner');
 drop policy if exists adjust_owner on public.stock_adjustments;
 create policy adjust_owner on public.stock_adjustments for select to authenticated
+  using (public.my_role() = 'owner');
+
+-- Returns: seedha sirf owner dekhe; staff sirf functions ke zariye (customer_statement, create_return)
+alter table public.sale_returns enable row level security;
+alter table public.return_lines enable row level security;
+drop policy if exists returns_owner on public.sale_returns;
+create policy returns_owner on public.sale_returns for select to authenticated
+  using (public.my_role() = 'owner');
+drop policy if exists return_lines_owner on public.return_lines;
+create policy return_lines_owner on public.return_lines for select to authenticated
   using (public.my_role() = 'owner');
 
 drop policy if exists profiles_select on public.profiles;
@@ -302,6 +340,10 @@ begin
   if not exists (select 1 from public.sales where id = p_sale and not voided) then
     raise exception 'Sale nahi mili ya pehle se cancel hai';
   end if;
+  -- jis bill ka kuch maal wapis ho chuka, us ko cancel karne se stock do dafa barhega
+  if exists (select 1 from public.return_lines where sale_id = p_sale) then
+    raise exception 'This bill has returned items, so it cannot be cancelled';
+  end if;
   for r in select item_id, qty from public.sale_lines where sale_id = p_sale loop
     update public.items set stock = stock + r.qty where id = r.item_id;
   end loop;
@@ -357,6 +399,103 @@ begin
   values (p_item, v_item.name, p_qty, nullif(trim(p_reason), ''));
   update public.items set stock = stock + p_qty where id = p_item;
 end $$;
+
+-- ---------- Customer ka hisaab (owner aur staff dono; staff ko sirf ek customer) ----------
+create or replace function public.customer_statement(p_customer bigint) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if coalesce(public.my_role(), '') not in ('owner','staff') then raise exception 'Not allowed'; end if;
+  return jsonb_build_object(
+    'balance',
+        coalesce((select sum(total) from public.sales where customer_id = p_customer and payment = 'credit' and not voided), 0)
+      - coalesce((select sum(amount) from public.khata_payments where customer_id = p_customer), 0)
+      - coalesce((select sum(total) from public.sale_returns where customer_id = p_customer and payment = 'credit'), 0),
+    'entries', coalesce((select jsonb_agg(e order by (e->>'at') desc) from (
+        select jsonb_build_object('at', created_at, 'type', 'sale', 'ref', id, 'text', summary, 'amount', total) e
+          from public.sales where customer_id = p_customer and payment = 'credit' and not voided
+        union all
+        select jsonb_build_object('at', created_at, 'type', 'payment', 'ref', id, 'text', note, 'amount', -amount)
+          from public.khata_payments where customer_id = p_customer
+        union all
+        select jsonb_build_object('at', created_at, 'type', 'return', 'ref', id, 'text', summary, 'amount', -total)
+          from public.sale_returns where customer_id = p_customer and payment = 'credit'
+      ) x), '[]'::jsonb));
+end $$;
+
+-- ---------- Jo maal wapis ho sakta hai ----------
+-- staff: sirf customer ki udhaar wali khareedari; owner: customer ya bill # se (cash bhi)
+create or replace function public.returnable_lines(p_customer bigint default null, p_sale bigint default null)
+returns table (line_id bigint, sale_id bigint, sold_at timestamptz, payment text, item_id bigint, item_name text,
+               qty numeric, returned numeric, entered_qty numeric, entered_unit text, amount numeric)
+language plpgsql stable security definer set search_path = public as $$
+#variable_conflict use_column
+declare r text := coalesce(public.my_role(), '');
+begin
+  if r not in ('owner','staff') then raise exception 'Not allowed'; end if;
+  if p_customer is null and p_sale is null then raise exception 'Choose a customer or a bill'; end if;
+  if r = 'staff' and p_customer is null then raise exception 'Choose a customer'; end if;
+  return query
+    select l.id, s.id, s.created_at, s.payment, l.item_id, l.item_name, l.qty,
+           coalesce((select sum(rl.qty) from public.return_lines rl where rl.sale_line_id = l.id), 0)::numeric,
+           l.entered_qty, l.entered_unit, l.amount
+    from public.sale_lines l join public.sales s on s.id = l.sale_id
+    where not s.voided
+      and (p_customer is null or s.customer_id = p_customer)
+      and (p_sale is null or s.id = p_sale)
+      and (r = 'owner' or s.payment = 'credit')
+    order by s.created_at desc, l.id;
+end $$;
+
+-- ---------- Maal wapis lena (stock barhta hai; udhaar ho to khata kam) ----------
+create or replace function public.create_return(p_lines jsonb, p_note text default null) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare
+  r text := coalesce(public.my_role(), ''); v_ret bigint; x jsonb; l record;
+  v_qty numeric; v_done numeric; v_amt numeric; v_total numeric := 0; v_sum text := '';
+  v_cust bigint; v_pay text; v_first boolean := true; v_name text;
+begin
+  if r not in ('owner','staff') then raise exception 'Not allowed'; end if;
+  if p_lines is null or jsonb_array_length(p_lines) = 0 then raise exception 'Nothing to return'; end if;
+  select full_name into v_name from public.profiles where id = auth.uid();
+  insert into public.sale_returns (seller_name, note) values (v_name, nullif(trim(p_note), '')) returning id into v_ret;
+
+  for x in select * from jsonb_array_elements(p_lines) loop
+    v_qty := (x->>'qty')::numeric;
+    if v_qty is null or v_qty <= 0 then raise exception 'Invalid quantity'; end if;
+    select sl.id, sl.sale_id, sl.item_id, sl.item_name, sl.qty, sl.amount, sl.cost,
+           s.customer_id as cust, s.payment as pay, s.voided as voided
+      into l
+      from public.sale_lines sl join public.sales s on s.id = sl.sale_id
+      where sl.id = (x->>'line_id')::bigint
+      for update of sl;
+    if not found or l.voided then raise exception 'Sale item not found'; end if;
+    if r = 'staff' and l.pay <> 'credit' then raise exception 'Only the owner can return cash sales'; end if;
+    if v_first then v_cust := l.cust; v_pay := l.pay; v_first := false;
+    elsif v_cust is distinct from l.cust or v_pay <> l.pay then
+      raise exception 'Return items of one customer and one payment type at a time';
+    end if;
+    select coalesce(sum(qty), 0) into v_done from public.return_lines where sale_line_id = l.id;
+    if v_qty > l.qty - v_done + 0.0005 then
+      raise exception 'Cannot return more than sold: % (only % left)', l.item_name, trim_scale(l.qty - v_done);
+    end if;
+    v_amt := round(l.amount * v_qty / l.qty, 2);
+    insert into public.return_lines (return_id, sale_line_id, sale_id, item_id, item_name, qty, amount, cost)
+    values (v_ret, l.id, l.sale_id, l.item_id, l.item_name, v_qty, v_amt, round(l.cost * v_qty / l.qty, 2));
+    update public.items set stock = stock + v_qty where id = l.item_id;
+    v_total := v_total + v_amt;
+    v_sum := v_sum || case when v_sum = '' then '' else ', ' end || trim_scale(v_qty)::text || ' ' || l.item_name;
+  end loop;
+
+  update public.sale_returns set customer_id = v_cust, payment = v_pay, total = v_total, summary = v_sum where id = v_ret;
+  return v_ret;
+end $$;
+
+revoke execute on function public.customer_statement(bigint)                 from public, anon;
+revoke execute on function public.returnable_lines(bigint, bigint)           from public, anon;
+revoke execute on function public.create_return(jsonb, text)                 from public, anon;
+grant  execute on function public.customer_statement(bigint)                 to authenticated;
+grant  execute on function public.returnable_lines(bigint, bigint)           to authenticated;
+grant  execute on function public.create_return(jsonb, text)                 to authenticated;
 
 revoke execute on function public.adjust_stock(bigint, numeric, text)        from public, anon;
 grant  execute on function public.adjust_stock(bigint, numeric, text)        to authenticated;

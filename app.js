@@ -158,8 +158,11 @@ function showLogin() {
   if ($('#lgSwitch')) $('#lgSwitch').onclick = e => {
     e.preventDefault(); store.del('cc_role'); store.del('cc_email'); showLogin();
   };
+  // kaunsa tab chuna hai: login usi role ka hona chahiye
+  let selRole = devRole || 'owner';
   $('#lgSeg').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
+    selRole = b.dataset.r;
     $('#lgSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
     $('#lgSeg').classList.toggle('c', b.dataset.r === 'cashier');
     $('#lgSub').textContent = `Sign in to your ${b.dataset.r} account`;
@@ -186,6 +189,15 @@ function showLogin() {
     if (error) {
       btn.disabled = false; txt.textContent = 'Login';
       return toast(/invalid/i.test(error.message) ? 'Wrong email or password' : errMsg(error), 'bad');
+    }
+    // Owner tab se sirf owner, Cashier tab se sirf staff
+    const { data: prof } = await sb.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+    const role = prof && prof.role;
+    if ((role === 'owner' && selRole !== 'owner') || (role === 'staff' && selRole !== 'cashier')) {
+      await sb.auth.signOut();
+      btn.disabled = false; txt.textContent = 'Login';
+      const how = devRole ? 'Tap "Use a different account".' : `Please use the ${role === 'owner' ? 'Owner' : 'Cashier'} tab.`;
+      return toast(`This is ${role === 'owner' ? 'an owner' : 'a cashier'} account. ${how}`, 'bad');
     }
     // Remember me: email yaad rakho; na ho to browser band hone par logout
     if (f.get('remember')) { store.set('cc_email', email); store.del('cc_forget'); }
@@ -435,8 +447,13 @@ async function udhaarBalances() {
     fetchAll(() => sb.from('khata_payments').select('id, customer_id, amount, created_at, note').order('id', { ascending: false }))
   ]);
   if (s.error || p.error) throw (s.error || p.error);
+  // udhaar wale returns bhi khata kam karte hain
+  const rt = await fetchAll(() => sb.from('sale_returns').select('id, customer_id, total, created_at, summary, seller_name')
+    .eq('payment', 'credit').not('customer_id', 'is', null).order('id', { ascending: false }));
+  if (rt.error) throw rt.error;
   const map = {};
-  const get = id => (map[id] = map[id] || { credit: 0, paid: 0, last: null, sales: [], pays: [] });
+  const get = id => (map[id] = map[id] || { credit: 0, paid: 0, last: null, sales: [], pays: [], rets: [] });
+  rt.data.forEach(x => { const m = get(x.customer_id); m.paid += Number(x.total); m.rets.push(x); if (!m.last || x.created_at > m.last) m.last = x.created_at; });
   s.data.forEach(x => { const m = get(x.customer_id); m.credit += Number(x.total); m.sales.push(x); if (!m.last || x.created_at > m.last) m.last = x.created_at; });
   p.data.forEach(x => { const m = get(x.customer_id); m.paid += Number(x.amount); m.pays.push(x); if (!m.last || x.created_at > m.last) m.last = x.created_at; });
   Object.values(map).forEach(m => { m.balance = Math.round((m.credit - m.paid) * 100) / 100; });
@@ -680,7 +697,9 @@ function renderCustBox() {
   if (c) {
     box.innerHTML = `<div class="cust-sel"><div class="avatar">${esc(initials(c.name))}</div>
       <div><b>${esc(c.name)}</b><small>${esc([c.phone, c.area].filter(Boolean).join(' · ') || 'No phone')}</small></div>
-      <button class="btn small" id="custChange">Change</button></div>`;
+      <button class="btn small" id="custChange">Change</button></div>
+      <div class="cust-acct" id="custAcct"><small>Loading udhaar...</small></div>`;
+    loadCustAcct(c);
     return;
   }
   box.innerHTML = `<div class="cust-find"><input id="custQ" placeholder="Search customer name or phone..." autocomplete="off"><button class="btn" id="custNew">＋ New</button></div>
@@ -696,6 +715,95 @@ function renderCustResults(t) {
   box.innerHTML = r.length
     ? r.map(c => `<button class="result" data-cust="${c.id}"><span><b>${esc(c.name)}</b> <small>${esc(c.phone || '')}</small></span><small>${esc(c.area || '')}</small></button>`).join('')
     : '<p class="empty">No customer found. Tap ＋ New.</p>';
+}
+
+/* ----- Customer ka udhaar, statement aur return (owner + cashier) ----- */
+async function custStatement(id) {
+  const { data, error } = await sb.rpc('customer_statement', { p_customer: id });
+  if (error) throw error;
+  return { balance: Number(data.balance) || 0, entries: data.entries || [] };
+}
+async function loadCustAcct(c) {
+  const box = $('#custAcct');
+  try {
+    const st = await custStatement(c.id);
+    if (!box || box !== $('#custAcct')) return;
+    box.innerHTML = `<div class="acct-bal"><small>Previous udhaar</small><b class="${st.balance > 0 ? 'purple' : ''}">${rs(st.balance)}</b></div>
+      <div class="acct-btns"><button class="btn small" id="custStmt">📄 Statement</button><button class="btn small" id="custReturn">↩ Return items</button></div>`;
+    $('#custStmt').onclick = () => statementModal(c, st);
+    $('#custReturn').onclick = () => returnModal({ customer: c });
+  } catch (e) { if (box) box.innerHTML = `<small class="red">${esc(errMsg(e))}</small>`; }
+}
+function statementText(c, st) {
+  const lines = st.entries.slice().reverse().map(x =>
+    `${fmtDate(x.at)}  ${x.type === 'sale' ? 'Bill #' + x.ref : x.type === 'payment' ? 'Paid' : 'Returned'}${x.text ? ' (' + x.text + ')' : ''}  ${x.amount < 0 ? '−' : '+'}${rs(Math.abs(x.amount))}`);
+  return `*${C.SHOP_NAME} - ${C.SHOP_SUB}*\n*Udhaar statement: ${c.name}*\n${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n━━━━━━━━━━━━\n` +
+    (lines.length ? lines.join('\n') : 'No entries') + `\n━━━━━━━━━━━━\n*Balance due: ${rs(st.balance)}*`;
+}
+function statementModal(c, st) {
+  const label = { sale: 'Udhaar sale', payment: 'Payment received', return: 'Items returned' };
+  const m = openModal(`
+    <h2 style="margin:0">${esc(c.name)}</h2><small>${esc([c.phone, c.area].filter(Boolean).join(' · '))}</small>
+    <div class="scard b-purple" style="cursor:default;margin:10px 0"><small>Balance due</small><b class="purple">${rs(st.balance)}</b></div>
+    ${st.entries.length ? `<div class="tbl-wrap" style="max-height:45vh;overflow:auto"><table class="tbl"><thead><tr><th>Date</th><th>Detail</th><th>Amount</th></tr></thead><tbody>
+      ${st.entries.map(x => `<tr><td><small class="nowrap">${fmtDate(x.at)}<br>${fmtTime(x.at)}</small></td>
+        <td>${label[x.type]}${x.type === 'sale' ? ' #' + x.ref : ''}<small>${esc(x.text || '')}</small></td>
+        <td class="nowrap ${x.amount < 0 ? 'green' : ''}">${x.amount < 0 ? '− ' : '+ '}${rs(Math.abs(x.amount))}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="empty">No udhaar history yet.</p>'}
+    <div class="modal-actions">
+      <button class="btn" id="stSend">💬 Send to customer</button>
+      <button class="btn primary" data-close>Close</button>
+    </div>`);
+  $('#stSend', m).onclick = () => { const t = statementText(c, st); c.phone ? window.open(waLink(c.phone, t), '_blank') : shareText(t); };
+}
+// opts: { customer } ya { sale } (bill # se, sirf owner)
+async function returnModal(opts) {
+  const params = opts.customer ? { p_customer: opts.customer.id } : { p_sale: opts.sale };
+  const { data, error } = await sb.rpc('returnable_lines', params);
+  if (error) return toast(errMsg(error), 'bad');
+  const lines = data.map(l => ({ ...l, qty: Number(l.qty), returned: Number(l.returned), amount: Number(l.amount) }))
+    .filter(l => l.qty - l.returned > 0.0005);
+  const title = opts.customer ? esc(opts.customer.name) : `Bill #${opts.sale}`;
+  if (!lines.length) return openModal(`<h3>Return items · ${title}</h3><p class="empty">Nothing to return${opts.customer ? ' — no udhaar items found for this customer' : ''}.</p>
+    <div class="modal-actions"><button class="btn primary" data-close>OK</button></div>`);
+  const unitOf = l => (itemById(l.item_id) || {}).unit;
+  const m = openModal(`
+    <h2 style="margin:0">↩ Return items</h2><small>${title} · enter how much came back</small>
+    <div class="tbl-wrap" style="max-height:50vh;overflow:auto;margin-top:10px"><table class="tbl ret">
+      <thead><tr><th>Item</th><th>Can return</th><th>Return</th><th>Refund</th></tr></thead><tbody>
+      ${lines.map((l, i) => { const left = Math.round((l.qty - l.returned) * 1000) / 1000, u = unitOf(l); return `<tr>
+        <td><b>${esc(l.item_name)}</b><small>Bill #${l.sale_id} · ${fmtDate(l.sold_at)} · ${l.payment === 'credit' ? 'Udhaar' : 'Cash'}</small></td>
+        <td class="nowrap">${u ? fmtQty(left, u) : trim3(left)}</td>
+        <td><input type="number" class="imp-num" min="0" max="${left}" step="any" inputmode="decimal" data-r="${i}" placeholder="0 ${u ? SHORT[u] : ''}"></td>
+        <td class="nowrap" id="rf${i}">—</td></tr>`; }).join('')}
+      </tbody></table></div>
+    <label style="margin-top:10px">Note<input id="retNote" placeholder="optional, e.g. not used"></label>
+    <div class="sum-row"><span>Total refund</span><b id="retTotal">Rs 0</b></div>
+    <small id="retHint" class="hint"></small>
+    <div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="retSave" disabled>✔ Save return</button></div>`);
+  const picked = () => lines.map((l, i) => ({ l, q: Number($(`[data-r="${i}"]`, m).value) || 0 })).filter(x => x.q > 0);
+  m.oninput = e => {
+    const i = e.target.dataset.r; if (i === undefined) return;
+    const l = lines[+i], q = Number(e.target.value) || 0;
+    $(`#rf${i}`, m).textContent = q > 0 ? rs(l.amount * q / l.qty) : '—';
+    const p = picked(), total = p.reduce((s, x) => s + x.l.amount * x.q / x.l.qty, 0);
+    const over = p.some(x => x.q > x.l.qty - x.l.returned + 0.0005);
+    const mixed = new Set(p.map(x => x.l.payment)).size > 1;
+    $('#retTotal', m).textContent = rs(total);
+    $('#retHint', m).innerHTML = over ? '<span class="red">Cannot return more than sold.</span>'
+      : mixed ? '<span class="red">Return udhaar and cash items separately.</span>'
+      : p.length && p[0].l.payment === 'credit' ? 'This amount will be removed from the customer\'s udhaar.' : p.length ? 'Give this cash back to the customer.' : '';
+    $('#retSave', m).disabled = !p.length || over || mixed;
+  };
+  $('#retSave', m).onclick = async () => {
+    const p = picked();
+    if (!p.length || !confirm('Save this return? Stock will go up.')) return;
+    const btn = $('#retSave', m); btn.disabled = true; btn.textContent = 'Saving...';
+    const { error: er } = await sb.rpc('create_return', { p_lines: p.map(x => ({ line_id: x.l.line_id, qty: x.q })), p_note: $('#retNote', m).value || null });
+    if (er) { btn.disabled = false; btn.textContent = '✔ Save return'; return toast(errMsg(er), 'bad'); }
+    closeModal(); toast('Return saved ✔ Stock updated');
+    await loadItems(); render();
+  };
 }
 
 async function saveSale() {
@@ -1073,20 +1181,22 @@ function showLowStockShare(low) {
 
 async function loadMoves() {
   const box = $('#moves');
-  const [sl, pu, ad] = await Promise.all([
+  const [sl, pu, ad, rl] = await Promise.all([
     sb.from('sale_lines').select('item_id, item_name, qty, sale_id, sales!inner(created_at, voided)').order('id', { ascending: false }).limit(40),
     sb.from('purchases').select('item_id, item_name, qty, supplier, created_at').order('created_at', { ascending: false }).limit(40),
-    sb.from('stock_adjustments').select('item_id, item_name, qty, reason, created_at').order('created_at', { ascending: false }).limit(40)
+    sb.from('stock_adjustments').select('item_id, item_name, qty, reason, created_at').order('created_at', { ascending: false }).limit(40),
+    sb.from('return_lines').select('item_id, item_name, qty, sale_id, sale_returns!inner(created_at, seller_name)').order('id', { ascending: false }).limit(40)
   ]);
   if (!box || box !== $('#moves')) return;
-  const err = sl.error || pu.error || ad.error;
+  const err = sl.error || pu.error || ad.error || rl.error;
   if (err) { box.innerHTML = `<p class="empty red">${esc(errMsg(err))}</p>`; return; }
   const rows = [
     ...sl.data.map(x => ({ at: x.sales.created_at, id: x.item_id, name: x.item_name, type: x.sales.voided ? 'cancelled' : 'sale', qty: x.sales.voided ? 0 : -x.qty, ref: 'Bill #' + x.sale_id })),
     ...pu.data.map(x => ({ at: x.created_at, id: x.item_id, name: x.item_name, type: 'purchase', qty: +x.qty, ref: x.supplier || '' })),
-    ...ad.data.map(x => ({ at: x.created_at, id: x.item_id, name: x.item_name, type: 'adjust', qty: +x.qty, ref: x.reason || '' }))
+    ...ad.data.map(x => ({ at: x.created_at, id: x.item_id, name: x.item_name, type: 'adjust', qty: +x.qty, ref: x.reason || '' })),
+    ...rl.data.map(x => ({ at: x.sale_returns.created_at, id: x.item_id, name: x.item_name, type: 'return', qty: +x.qty, ref: `Bill #${x.sale_id}${x.sale_returns.seller_name ? ' · ' + x.sale_returns.seller_name : ''}` }))
   ].sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 30);
-  const PILL = { sale: 'red', purchase: '', adjust: 'amber', cancelled: 'grey' };
+  const PILL = { sale: 'red', purchase: '', adjust: 'amber', cancelled: 'grey', return: 'amber' };
   box.innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th class="hide-m">Ref</th></tr></thead><tbody>
     ${rows.map(r => { const u = (itemById(r.id) || {}).unit; return `<tr>
@@ -1160,7 +1270,9 @@ function viewReport(v) {
       <tbody id="repRows"><tr><td colspan="7" class="empty">Loading...</td></tr></tbody>
     </table></div>
   </section>
+  <div id="repReturns"></div>
   <div id="repTop"></div>`;
+  if (!S.customers) loadCustomers().then(() => drawReport());
   v.onclick = async e => {
     const c = e.target.closest('[data-chip]');
     if (c) { setRange(c.dataset.chip); return render(); }
@@ -1200,8 +1312,14 @@ async function loadReport() {
       .gte('sales.created_at', from.toISOString()).lt('sales.created_at', to.toISOString()).eq('sales.voided', false).order('id'));
     lines = r.data || [];
   }
+  let returns = [];
+  if (isOwner()) {
+    const r = await fetchAll(() => sb.from('sale_returns').select('*, return_lines(sale_id, cost)')
+      .gte('created_at', from.toISOString()).lt('created_at', to.toISOString()).order('created_at', { ascending: false }));
+    returns = r.data || [];
+  }
   if (body !== $('#repRows')) return;
-  S.repData = { sales, lines };
+  S.repData = { sales, lines, returns };
   const sellers = [...new Set(sales.map(s => s.seller_name).filter(Boolean))].sort();
   if (S.repF.cashier && !sellers.includes(S.repF.cashier)) S.repF.cashier = '';
   $('#rc').innerHTML = '<option value="">All</option>' + sellers.map(n => `<option ${n === S.repF.cashier ? 'selected' : ''}>${esc(n)}</option>`).join('');
@@ -1234,9 +1352,22 @@ function drawReport() {
   const total = sum(ok), credit = sum(ok.filter(s => s.payment === 'credit'));
   const ids = new Set(ok.map(s => s.id));
   const cost = S.repData.lines.filter(l => ids.has(l.sale_id)).reduce((t, l) => t + Number(l.cost), 0);
+  // is waqt mein jo maal wapis hua (cashier/type filter ke saath)
+  const rets = (S.repData.returns || []).filter(r => (!f.cashier || r.seller_name === f.cashier) && (!f.type || r.payment === f.type));
+  const retTotal = rets.reduce((t, r) => t + Number(r.total), 0);
+  const retCost = rets.reduce((t, r) => t + (r.return_lines || []).reduce((a, x) => a + Number(x.cost), 0), 0);
   $('#repChips').innerHTML = `<span class="schip">${ok.length} bill${ok.length === 1 ? '' : 's'}</span>
-    <span class="schip green">Net total ${rs(total)}</span><span class="schip blue">Cash ${rs(total - credit)}</span>
-    <span class="schip amber">Udhaar ${rs(credit)}</span>${isOwner() ? `<span class="schip purple">Profit (est.) ${rs(total - cost)}</span>` : ''}`;
+    <span class="schip green">Net total ${rs(total - retTotal)}</span><span class="schip blue">Cash ${rs(total - credit)}</span>
+    <span class="schip amber">Udhaar ${rs(credit)}</span>${retTotal ? `<span class="schip">Returns −${rs(retTotal)}</span>` : ''}
+    ${isOwner() ? `<span class="schip purple">Profit (est.) ${rs(total - cost - (retTotal - retCost))}</span>` : ''}`;
+  const rb = $('#repReturns');
+  if (rb) rb.innerHTML = rets.length ? `<section class="card"><h3>↩ Returns (${rets.length})</h3><div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Date</th><th>By</th><th>Customer</th><th>Items</th><th>Type</th><th>Amount</th></tr></thead><tbody>
+    ${rets.map(r => `<tr><td class="nowrap">${fmtDate(r.created_at)} ${fmtTime(r.created_at)}</td><td>${esc(r.seller_name || '')}</td>
+      <td>${esc((custById(r.customer_id) || {}).name || 'Walk-in')}</td><td><small>${esc(r.summary || '')}</small>${r.note ? `<small>${esc(r.note)}</small>` : ''}</td>
+      <td><span class="pill ${r.payment === 'credit' ? 'amber' : ''}">${r.payment === 'credit' ? 'Udhaar' : 'Cash'}</span></td>
+      <td class="nowrap"><b>−${rs(r.total)}</b></td></tr>`).join('')}
+    </tbody></table></div></section>` : '';
   const multiDay = S.report.from !== S.report.to;
   $('#repRows').innerHTML = list.length ? list.map(s => `<tr class="${s.voided ? 'voided' : ''}">
       <td><b>#${s.id}</b></td>
@@ -1255,6 +1386,14 @@ async function viewBill(id) {
   const cust = custById(s.customer_id);
   showReceipt({ id, lines: data.map(l => ({ name: l.item_name, entered_qty: l.entered_qty ?? l.qty, entered_unit: l.entered_unit, amount: Number(l.amount) })),
     disc: Number(s.discount), cust: s.customer, phone: cust && cust.phone, payment: s.payment, total: Number(s.total), date: new Date(s.created_at), seller: s.seller_name });
+  // owner bill se seedha maal wapis le sakta hai (cash bhi)
+  const acts = $('#modal .modal-actions');
+  if (isOwner() && !s.voided && acts) {
+    const b = document.createElement('button');
+    b.className = 'btn'; b.textContent = '↩ Return';
+    b.onclick = () => returnModal({ sale: id });
+    acts.insertBefore(b, acts.lastElementChild);
+  }
 }
 
 /* ---------------- CUSTOMERS & KHATA (Udhaar) ---------------- */
@@ -1291,7 +1430,7 @@ async function reloadKhata() {
   catch (e) { S.khata = {}; toast('Could not load udhaar: ' + errMsg(e), 'bad'); }
   if (S.view === 'udhaar') drawKhata();
 }
-const balOf = id => (S.khata && S.khata[id]) || { balance: 0, last: null, sales: [], pays: [] };
+const balOf = id => (S.khata && S.khata[id]) || { balance: 0, last: null, sales: [], pays: [], rets: [] };
 function khataRows() {
   const w = (S.khataQ || '').trim().toLowerCase();
   return (S.customers || []).map(c => ({ c, b: balOf(c.id) }))
@@ -1360,7 +1499,8 @@ function ledger(c) {
   const b = balOf(c.id);
   const entries = [
     ...b.sales.map(s => ({ at: s.created_at, text: `Sale #${s.id}`, sub: s.summary || '', amt: Number(s.total) })),
-    ...b.pays.map(p => ({ at: p.created_at, text: 'Payment received', sub: p.note || '', amt: -Number(p.amount) }))
+    ...b.pays.map(p => ({ at: p.created_at, text: 'Payment received', sub: p.note || '', amt: -Number(p.amount) })),
+    ...(b.rets || []).map(r => ({ at: r.created_at, text: `Items returned${r.seller_name ? ' (by ' + r.seller_name + ')' : ''}`, sub: r.summary || '', amt: -Number(r.total) }))
   ].sort((x, y) => (x.at < y.at ? -1 : 1));
   let run = 0;
   entries.forEach(x => { run += x.amt; x.bal = run; });
