@@ -54,30 +54,37 @@ Yahi link laptop aur mobile dono par kholein.
 
 ## Qadam 6: Staff add karna
 1. Supabase → **Authentication** → **Users** → **Add user** (Auto Confirm ke saath).
-2. App mein **Menu** → **Users** mein us user ko **Staff** bana dein.
-3. Staff ko email aur password bata dein.
+2. App mein **Settings → Users / Staff** mein us user ko **Staff** bana dein.
+3. Staff ko email aur password bata dein. Wo login screen par **Cashier** tab se login kare.
 
 ---
 
 ## App kaise chalayein
 | Screen | Kaam |
 |---|---|
-| **Sale** | Item dhoondein, quantity aur unit (kg/gram, feet/meter, cylinder) chunein, phir Save. Stock khud kam ho jata hai. |
-| **Stock** | Saare items. Owner yahan naya item add karta hai ya rate badalta hai. |
-| **Kam Stock** | Jo items had se kam hain. "List bhejein" se WhatsApp par bhej sakte hain. |
-| **Report** | Aaj, kal, 7 din ya mahine ki sale. Owner ko munafa bhi nazar aata hai. Ghalat sale ko yahin se cancel karein, stock wapis aa jayega. |
-| **Menu → Maal aaya** | Naya maal aaye to entry karein, stock barh jayega (sirf owner). |
+| **Dashboard** | Aaj ki sale (Cash/Udhaar), munafa, udhaar baqi, kam stock, 7 din ka chart, aakhri sales. |
+| **POS / Billing** | Item dhoondein (F2) ya Quick pick se chunein, quantity aur unit (kg/gram, feet/meter, cylinder), Cash ya Udhaar, phir Complete Sale (F4). Stock khud kam ho jata hai. |
+| **POS → customer chunein** | Customer ka pichla udhaar, 📄 Statement (WhatsApp par bhi), aur ↩ Return items (maal wapis, khata kam). |
+| **Sales History** | Din/hafta/mahina, cashier aur type se filter. Bill dobara print, Cancel, aur cash wala Return (sirf owner). Returns aur munafa bhi. |
+| **Customers & Khata** | Har customer ka udhaar, credit limit, Receive (wasooli), WhatsApp yaad-dihani, poora hisaab. |
+| **Products** | Saare items, stock, rate, cost aur margin. Add / Edit, Export CSV. |
+| **Inventory** | Stock ki qeemat, kam stock, Adjust (toot phoot / ginti), stock movements, aur low stock list (picture ya text) WhatsApp par. |
+| **Purchase** | Naya maal aaye to entry, ya supplier ka bill **Excel se Import**. Stock aur khareed rate khud update. |
 
-## Owner aur Staff ka farq
-| | Owner | Staff |
+## Owner aur Staff (Cashier) ka farq
+| | Owner | Cashier |
 |---|---|---|
-| Sale karna | ✅ | ✅ |
-| Stock dekhna | ✅ | ✅ |
-| Khareed rate aur munafa | ✅ | ❌ |
-| Item add karna ya rate badalna | ✅ | ❌ |
-| Maal aaya (purchase) | ✅ | ❌ |
-| Sale cancel karna | ✅ | ❌ |
+| Sale karna (Cash / Udhaar) | ✅ | ✅ |
+| Customer ka udhaar aur statement dekhna (POS mein) | ✅ | ✅ |
+| Udhaar wale maal ka return | ✅ | ✅ |
+| Cash sale ka return, sale cancel | ✅ | ❌ |
+| Products dekhna | ✅ | ✅ (bina cost/margin) |
+| Dashboard, Sales History, Khata, Inventory, Purchase | ✅ | ❌ |
+| Wasooli (udhaar ke paise lena) | ✅ | ❌ |
 | Users manage karna | ✅ | ❌ |
+
+## Backup
+Har raat database ka backup private repo `cool-care-backup` mein khud banta hai (10 din tak). Tareeqa usi repo ki README mein hai.
 
 ## Bill par phone aur address
 `config.js` mein `SHOP_PHONE` aur `SHOP_ADDRESS` bhar dein, phir file GitHub par dobara upload karein.

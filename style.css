@@ -146,18 +146,6 @@ label.lg-fld { display: flex; align-items: center; gap: 11px; background: #fff; 
 @media (min-width: 760px) { .fab { bottom: 28px; right: 28px; } }
 
 /* home */
-.hero { background: linear-gradient(135deg, #0b6fb8, #16b3d9); color: #fff; border: 0; }
-.hero small { color: #dff3fb; }
-.hero .big { font-size: 2rem; font-weight: 800; margin: 2px 0; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-@media (min-width: 760px) { .grid2.four { grid-template-columns: repeat(4, 1fr); } }
-.tile { border-radius: var(--radius); padding: 14px; cursor: pointer; border: 0; text-align: left; }
-.tile small { color: inherit; opacity: .85; font-size: .8rem; }
-.tile b { font-size: 1.3rem; display: block; margin-top: 2px; }
-.t-green { background: var(--green-soft); color: var(--green); }
-.t-red { background: var(--red-soft); color: var(--red); }
-.t-amber { background: var(--amber-soft); color: var(--amber); }
-.t-purple { background: var(--purple-soft); color: var(--purple); }
 .actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
 .act { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 2px; text-align: center;
   font-size: .8rem; font-weight: 600; cursor: pointer; }
@@ -303,15 +291,8 @@ legend { font-size: .85rem; color: var(--muted); padding: 0 4px; }
 .line-info { font-size: .82rem; margin: 2px 0 8px; }
 .x { border: 0; background: var(--red-soft); color: var(--red); width: 32px; height: 32px; border-radius: 8px;
   cursor: pointer; flex: none; }
-.total-row { display: flex; justify-content: space-between; align-items: center; font-size: 1.15rem;
-  margin-top: 14px; padding-top: 12px; border-top: 2px solid var(--line); }
-.total-row b { font-size: 1.5rem; color: var(--blue); }
 
 /* report */
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
-.stat small { margin-bottom: 4px; }
-.stat b { font-size: 1.35rem; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .chip { border: 1px solid #c9d5e2; background: #fff; border-radius: 20px; padding: 7px 14px; cursor: pointer; font-weight: 600; }
 .chip.on { background: var(--blue); color: #fff; border-color: var(--blue); }

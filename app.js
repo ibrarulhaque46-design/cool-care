@@ -25,7 +25,6 @@ const isLow = i => Number(i.stock) <= Number(i.min_stock);
 const deviceType = () => /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'mobile' : 'laptop';
 const errMsg = e => (e && (e.message || e.error_description)) || 'Something went wrong';
 
-const UNIT_NAMES = { piece: 'Piece (adad)', kg: 'Kilo (kg) - gas waghera', litre: 'Litre - oil waghera', meter: 'Meter', feet: 'Feet - pipe waghera', gaz: 'Gaz - wire waghera' };
 const SHORT = { piece: 'pc', kg: 'kg', gram: 'gram', litre: 'litre', ml: 'ml', meter: 'meter', feet: 'feet', gaz: 'gaz' };
 const CONV = {
   piece: [['piece', 1]],
