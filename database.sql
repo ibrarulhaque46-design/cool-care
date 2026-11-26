@@ -435,9 +435,11 @@ begin
   if p_customer is null and p_sale is null then raise exception 'Choose a customer or a bill'; end if;
   if r = 'staff' and p_customer is null then raise exception 'Choose a customer'; end if;
   return query
+    -- amount = bill ka discount nikaal kar (customer ne asal mein jo diya)
     select l.id, s.id, s.created_at, s.payment, l.item_id, l.item_name, l.qty,
            coalesce((select sum(rl.qty) from public.return_lines rl where rl.sale_line_id = l.id), 0)::numeric,
-           l.entered_qty, l.entered_unit, l.amount
+           l.entered_qty, l.entered_unit,
+           round(l.amount * case when s.total + s.discount > 0 then greatest(s.total, 0) / (s.total + s.discount) else 1 end, 2)
     from public.sale_lines l join public.sales s on s.id = l.sale_id
     where not s.voided
       and (p_customer is null or s.customer_id = p_customer)
@@ -462,7 +464,9 @@ begin
   for x in select * from jsonb_array_elements(p_lines) loop
     v_qty := (x->>'qty')::numeric;
     if v_qty is null or v_qty <= 0 then raise exception 'Invalid quantity'; end if;
-    select sl.id, sl.sale_id, sl.item_id, sl.item_name, sl.qty, sl.amount, sl.cost,
+    -- amount = line ki raqam, bill ke discount ke hisaab se kam (jitna customer ne asal mein diya)
+    select sl.id, sl.sale_id, sl.item_id, sl.item_name, sl.qty, sl.cost,
+           round(sl.amount * case when s.total + s.discount > 0 then greatest(s.total, 0) / (s.total + s.discount) else 1 end, 2) as amount,
            s.customer_id as cust, s.payment as pay, s.voided as voided
       into l
       from public.sale_lines sl join public.sales s on s.id = sl.sale_id

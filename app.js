@@ -1313,7 +1313,7 @@ async function loadReport() {
   }
   let returns = [];
   if (isOwner()) {
-    const r = await fetchAll(() => sb.from('sale_returns').select('*, return_lines(sale_id, cost)')
+    const r = await fetchAll(() => sb.from('sale_returns').select('*, return_lines(sale_id, cost, item_id, item_name, qty, amount)')
       .gte('created_at', from.toISOString()).lt('created_at', to.toISOString()).order('created_at', { ascending: false }));
     returns = r.data || [];
   }
@@ -1330,7 +1330,12 @@ async function loadReport() {
     top[k] = top[k] || { name: k, qty: 0, amount: 0, unit: (itemById(l.item_id) || {}).unit || '' };
     top[k].qty += Number(l.qty); top[k].amount += Number(l.amount);
   });
-  const topList = Object.values(top).sort((a, b) => b.amount - a.amount).slice(0, 10);
+  // jo maal wapis aaya wo minus
+  returns.forEach(r => (r.return_lines || []).forEach(l => {
+    const t = top[l.item_name]; if (!t) return;
+    t.qty -= Number(l.qty); t.amount -= Number(l.amount);
+  }));
+  const topList = Object.values(top).filter(t => t.qty > 0.0005).sort((a, b) => b.amount - a.amount).slice(0, 10);
   const staff = {};
   sales.filter(s => !s.voided).forEach(s => { const k = s.seller_name || '—'; staff[k] = (staff[k] || 0) + Number(s.total); });
   $('#repTop').innerHTML = isOwner() && sales.length ? `<div class="panels">
@@ -1523,6 +1528,48 @@ function ledger(c) {
 }
 
 /* ---------------- MENU / SETTINGS ---------------- */
+/* ----- Backup: saara data ek Excel file mein (sirf owner) ----- */
+function backupAgeText() {
+  const t = Number(store.get('cc_last_backup'));
+  if (!t) return 'No backup downloaded on this device yet.';
+  const d = Math.floor((Date.now() - t) / 86400000);
+  return `Last backup on this device: ${new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} (${d === 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago'})`;
+}
+async function downloadBackup(btn) {
+  if (!isOwner()) return;
+  const old = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing backup...';
+  try {
+    await loadXlsx();
+    // har table ki saari lines (1000 se zyada bhi)
+    const get = async (table, cols = '*', order = 'id') => {
+      const { data, error } = await fetchAll(() => sb.from(table).select(cols).order(order));
+      if (error) throw new Error(`${table}: ${errMsg(error)}`);
+      return data;
+    };
+    const [items, costs, customers, sales, lines, pays, purchases, adjusts, rets, retLines, users] = await Promise.all([
+      get('items'), get('item_costs', '*', 'item_id'), get('customers'), get('sales'), get('sale_lines'), get('khata_payments'),
+      get('purchases'), get('stock_adjustments'), get('sale_returns', 'id, created_at, seller_name, customer_id, payment, total, summary, note'),
+      get('return_lines'), get('profiles', 'id, full_name, email, role, created_at', 'created_at')]);
+    const cost = Object.fromEntries(costs.map(c => [c.item_id, c.purchase_price]));
+    const itemRows = items.map(i => ({ id: i.id, name: i.name, company: i.company, category: i.category, unit: i.unit, stock: Number(i.stock),
+      min_stock: Number(i.min_stock), sale_price: Number(i.sale_price), cost_price: cost[i.id] != null ? Number(cost[i.id]) : '',
+      pack_name: i.pack_name, pack_size: i.pack_size, pack_price: i.pack_price, active: i.active ? 'yes' : 'no' }));
+    const wb = XLSX.utils.book_new();
+    const add = (name, rows) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ note: 'no data' }]), name);
+    const now = new Date();
+    add('Info', [{ shop: `${C.SHOP_NAME} ${C.SHOP_SUB}`, backup_date: now.toLocaleString('en-GB'), made_by: S.profile.full_name,
+      items: items.length, sales: sales.length, customers: customers.length }]);
+    add('Items', itemRows); add('Customers', customers); add('Sales', sales); add('Sale lines', lines);
+    add('Khata payments', pays); add('Purchases', purchases); add('Stock adjustments', adjusts);
+    add('Returns', rets); add('Return lines', retLines); add('Users', users);
+    XLSX.writeFile(wb, `cool-care-backup-${dayStr(now)}.xlsx`);
+    store.set('cc_last_backup', String(Date.now()));
+    const lb = $('#lastBackup'); if (lb) lb.textContent = backupAgeText();
+    toast('Backup downloaded ✔ Keep it in a safe place');
+  } catch (e) { toast('Backup failed: ' + errMsg(e), 'bad'); }
+  btn.disabled = false; btn.textContent = old;
+}
+
 function viewMenu(v) {
   const p = S.profile;
   v.innerHTML = pageHead('Settings', 'Your account, staff and app options.') + `
@@ -1530,6 +1577,11 @@ function viewMenu(v) {
     <div class="who big"><span class="avatar">${esc(initials(p.full_name))}</span><div><b>${esc(p.full_name || '')}</b><small>${esc(p.email || '')}</small></div>
     <span class="pill" style="margin-left:auto">${isOwner() ? 'Owner' : 'Staff'}</span></div>
   </section>
+  ${isOwner() ? `<section class="card backup-card">
+    <div><h3 style="margin:0">📥 Backup</h3><small>Download all shop data as one Excel file. Keep it in Google Drive or on your laptop — once a month is good.</small>
+      <small id="lastBackup">${backupAgeText()}</small></div>
+    <button class="btn primary" id="dlBackup">📥 Download Backup (Excel)</button>
+  </section>` : ''}
   <section class="card menu-list">
     ${isOwner() ? `<button class="btn" data-go="purchase">🚚 Purchase (stock in)</button>
     <button class="btn" data-go="udhaar">📒 Customers & Khata</button>
@@ -1542,6 +1594,7 @@ function viewMenu(v) {
   v.onclick = async e => {
     const g = e.target.closest('[data-go]');
     if (g) return go(g.dataset.go);
+    if (e.target.closest('#dlBackup')) return downloadBackup(e.target.closest('#dlBackup'));
     if (e.target.closest('#logout') && confirm('Logout?')) { await sb.auth.signOut(); }
     if (e.target.closest('#install')) {
       if (S.installPrompt) { S.installPrompt.prompt(); S.installPrompt = null; return; }

@@ -301,6 +301,10 @@ legend { font-size: .85rem; color: var(--muted); padding: 0 4px; }
 
 /* menu */
 .menu-list { display: grid; gap: 8px; }
+.backup-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-left: 4px solid var(--green); }
+.backup-card > div { flex: 1 1 260px; }
+.backup-card small { margin-top: 4px; }
+#lastBackup { color: var(--green); font-weight: 600; }
 .menu-list .btn { text-align: left; padding: 14px; font-size: 1rem; }
 .note { background: var(--blue-soft); border-radius: 10px; padding: 10px 12px; font-size: .9rem; }
 .note ol { margin: 6px 0 0; padding-left: 20px; }
