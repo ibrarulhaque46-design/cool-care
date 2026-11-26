@@ -1324,11 +1324,14 @@ async function loadReport() {
   $('#rc').innerHTML = '<option value="">All</option>' + sellers.map(n => `<option ${n === S.repF.cashier ? 'selected' : ''}>${esc(n)}</option>`).join('');
   drawReport();
 
+  // har bill ka discount us ki lines mein baant do (asal mein jitna mila)
+  const factor = {};
+  sales.forEach(s => { const gross = Number(s.total) + Number(s.discount || 0); factor[s.id] = gross > 0 ? Math.max(Number(s.total), 0) / gross : 1; });
   const top = {};
   lines.forEach(l => {
     const k = l.item_name;
     top[k] = top[k] || { name: k, qty: 0, amount: 0, unit: (itemById(l.item_id) || {}).unit || '' };
-    top[k].qty += Number(l.qty); top[k].amount += Number(l.amount);
+    top[k].qty += Number(l.qty); top[k].amount += Number(l.amount) * (factor[l.sale_id] ?? 1);
   });
   // jo maal wapis aaya wo minus
   returns.forEach(r => (r.return_lines || []).forEach(l => {
