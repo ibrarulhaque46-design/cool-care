@@ -302,12 +302,12 @@ begin
   for v_line in select * from jsonb_array_elements(p_lines) loop
     v_qty := (v_line->>'qty')::numeric;
     v_amt := coalesce((v_line->>'amount')::numeric, 0);
-    if v_qty is null or v_qty <= 0 then raise exception 'Quantity ghalat hai'; end if;
+    if v_qty is null or v_qty <= 0 then raise exception 'Invalid quantity'; end if;
 
     select * into v_item from public.items where id = (v_line->>'item_id')::bigint for update;
-    if not found then raise exception 'Item nahi mila'; end if;
+    if not found then raise exception 'Item not found'; end if;
     if v_item.stock < v_qty then
-      raise exception 'Stock kam hai: % (sirf % % baqi)', v_item.name, trim_scale(v_item.stock), v_item.unit;
+      raise exception 'Not enough stock: % (only % % left)', v_item.name, trim_scale(v_item.stock), v_item.unit;
     end if;
 
     select coalesce(purchase_price, 0) into v_cost from public.item_costs where item_id = v_item.id;
@@ -335,10 +335,10 @@ language plpgsql security definer set search_path = public as $$
 declare r record;
 begin
   if public.my_role() is distinct from 'owner' then
-    raise exception 'Sirf owner sale cancel kar sakta hai';
+    raise exception 'Only the owner can cancel a sale';
   end if;
   if not exists (select 1 from public.sales where id = p_sale and not voided) then
-    raise exception 'Sale nahi mili ya pehle se cancel hai';
+    raise exception 'Sale not found or already cancelled';
   end if;
   -- jis bill ka kuch maal wapis ho chuka, us ko cancel karne se stock do dafa barhega
   if exists (select 1 from public.return_lines where sale_id = p_sale) then
@@ -358,12 +358,12 @@ language plpgsql security definer set search_path = public as $$
 declare v_id bigint; v_name text; v_unit numeric;
 begin
   if public.my_role() is distinct from 'owner' then
-    raise exception 'Sirf owner purchase entry kar sakta hai';
+    raise exception 'Only the owner can add purchases';
   end if;
-  if p_qty is null or p_qty <= 0 then raise exception 'Quantity ghalat hai'; end if;
+  if p_qty is null or p_qty <= 0 then raise exception 'Invalid quantity'; end if;
 
   select name into v_name from public.items where id = p_item for update;
-  if not found then raise exception 'Item nahi mila'; end if;
+  if not found then raise exception 'Item not found'; end if;
 
   v_unit := case when coalesce(p_total_cost, 0) > 0 then p_total_cost / p_qty else null end;
 
