@@ -146,6 +146,13 @@ create index if not exists sales_created_idx      on public.sales(created_at);
 create index if not exists sale_lines_sale_idx    on public.sale_lines(sale_id);
 create index if not exists purchases_created_idx  on public.purchases(created_at);
 
+-- ---------- Version 6: Owner ki profile photo ----------
+-- chhoti photo (data:image/jpeg;base64,...) seedha profile mein; sirf owner badal sakta hai (profiles_update policy)
+alter table public.profiles add column if not exists avatar text;
+alter table public.profiles drop constraint if exists profiles_avatar_size;
+alter table public.profiles add constraint profiles_avatar_size
+  check (avatar is null or (length(avatar) < 80000 and avatar like 'data:image/%'));
+
 -- ---------- Role helper ----------
 create or replace function public.my_role() returns text
 language sql stable security definer set search_path = public as $$

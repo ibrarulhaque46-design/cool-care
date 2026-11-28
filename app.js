@@ -51,6 +51,44 @@ function toast(msg, type = 'ok') {
   t.className = 'toast ' + type; t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), type === 'bad' ? 5000 : 3000);
+  if (type === 'bad') sfx('buzz');
+}
+
+/* ----- Sound aur animation (har device apni setting rakhta hai) ----- */
+const FX = {
+  get sound() { return store.get('cc_sound') !== 'off'; },
+  get anim() { return store.get('cc_anim') !== 'off'; }
+};
+let audioCtx = null;
+// awaaz browser khud banata hai, koi file nahi
+function sfx(kind) {
+  if (!FX.sound) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const tone = (f, d, type, v, at = 0) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime + at;
+      o.type = type; o.frequency.value = f;
+      g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.001, t + d);
+      o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + d);
+    };
+    if (kind === 'tik') tone(1200, 0.06, 'triangle', 0.25);
+    else if (kind === 'ching') { tone(1318, 0.15, 'triangle', 0.25); tone(1760, 0.35, 'triangle', 0.25, 0.1); }
+    else if (kind === 'buzz') tone(140, 0.25, 'sawtooth', 0.15);
+  } catch (_) {}
+}
+function applyAnimSetting() { document.body.classList.toggle('no-anim', !FX.anim); }
+// number 0 se gin kar raqam tak (sirf "Rs 1,234" jaisa text)
+function countUp(el, text) {
+  if (!el) return;
+  const to = Number(String(text).replace(/[^\d.-]/g, ''));
+  if (!FX.anim || !isFinite(to) || !/\d/.test(text)) { el.textContent = text; return; }
+  const neg = to < 0, abs = Math.abs(to), t0 = performance.now();
+  const step = t => {
+    const p = Math.min((t - t0) / 900, 1);
+    el.textContent = p < 1 ? rs((neg ? -1 : 1) * Math.round(abs * (1 - Math.pow(1 - p, 3)))) : text;
+    if (p < 1 && el.isConnected) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 function openModal(html) {
   closeModal();
@@ -117,7 +155,7 @@ function showLogin() {
       <div class="lg-badge lg-b1"><span class="lg-dot"></span><div><b>Live</b><br>Stock update</div></div>
       <div class="lg-badge lg-b2">❄ <div><b>16°C</b><br>Cool Care</div></div>
       <div class="lg-brand">
-        <div class="lg-logo"><span>❄</span></div>
+        <div class="lg-logo pic"><img src="img/logo.svg" alt=""></div>
         <div><h2>${esc(C.SHOP_NAME)}</h2><small>${esc(C.SHOP_SUB)} · ${esc(C.SHOP_TAG)}</small></div>
       </div>
       <svg class="lg-wave" viewBox="0 0 380 46" preserveAspectRatio="none" aria-hidden="true"><path d="M0 26 C70 2 130 44 200 24 C270 4 320 30 380 16 L380 46 L0 46 Z"/></svg>
@@ -274,6 +312,24 @@ const TITLES = { home: 'Dashboard', sale: 'POS / Billing', stock: 'Products', lo
   report: 'Sales History', menu: 'Settings', purchase: 'Purchase', users: 'Users / Staff' };
 const canSee = k => isOwner() || STAFF_VIEWS.includes(k);
 function initials(n) { return String(n || '?').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
+// owner ki photo (agar lagi ho), warna naam ke huroof
+function avatarInner(p) {
+  return isOwner() && p.avatar && /^data:image\//.test(p.avatar) ? `<img class="av-img" src="${esc(p.avatar)}" alt="">` : esc(initials(p.full_name));
+}
+// photo ko browser mein hi chhota (160x160 JPEG) kar do
+function shrinkPhoto(file) {
+  return new Promise((ok, bad) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const N = 160, c = document.createElement('canvas'); c.width = c.height = N;
+      const s = Math.min(img.width, img.height);
+      c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, N, N);
+      URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); bad(new Error('This file is not a picture')); };
+    img.src = url;
+  });
+}
 function nowText() { return new Date().toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); }
 setInterval(() => { const c = $('#clock'); if (c) c.textContent = nowText(); }, 30000);
 
@@ -282,14 +338,18 @@ function showApp() {
   app.innerHTML = `
   <div class="shell">
   <aside class="side">
-    <div class="side-brand"><div class="logo">❄</div><div><b>${esc(C.SHOP_NAME)}</b><small>${esc(C.SHOP_SUB)} · ${esc(C.SHOP_TAG)}</small></div></div>
+    <div class="side-brand"><img class="logo pic" src="img/logo.svg" alt=""><div><b>${esc(C.SHOP_NAME)}</b><small>${esc(C.SHOP_SUB)} · ${esc(C.SHOP_TAG)}</small></div></div>
     ${SIDE.map(([g, list]) => { const l = list.filter(([k]) => canSee(k)); return l.length ? `<div class="side-group">${g === 'Owner' && !isOwner() ? 'Account' : g}</div>` +
       l.map(([k, ic, t]) => `<button class="side-item" data-nav="${k}"><span>${ic}</span>${t}</button>`).join('') : ''; }).join('')}
-    <div class="side-user"><div class="avatar">${esc(initials(p.full_name))}</div><div><b>${esc(p.full_name || '')}</b><small>${isOwner() ? 'Owner' : 'Staff'}</small></div></div>
+    <div class="side-user">
+      <div class="su-av">${avatarInner(p)}<i></i></div>
+      <div class="su-info"><b>${esc(p.full_name || '')}</b><span class="su-role">${isOwner() ? '👑 Owner' : '🧾 Cashier'}</span></div>
+      <button class="su-btn su-out" id="sideLogout" title="Logout">⏻</button>
+    </div>
   </aside>
   <div class="main-col">
   <header class="top">
-    <div class="brand"><div class="logo">❄</div><div><b>${esc(C.SHOP_NAME)}</b><small>${esc(C.SHOP_SUB)} · ${esc(C.SHOP_TAG)}</small></div></div>
+    <div class="brand"><img class="logo pic" src="img/logo.svg" alt=""><div><b>${esc(C.SHOP_NAME)}</b><small>${esc(C.SHOP_SUB)} · ${esc(C.SHOP_TAG)}</small></div></div>
     <h1 class="page-title" id="pageTitle"></h1>
     <div class="top-chips">
       <div class="tchip"><small>${isOwner() ? 'Owner' : 'Cashier'}</small><b>${esc(p.full_name || '')}</b></div>
@@ -297,7 +357,8 @@ function showApp() {
     </div>
     <div class="top-actions">
       ${isOwner() ? '<button class="icon-btn bell" id="bellBtn" title="Low stock alerts">🔔<span class="badge" id="lowBadge" hidden></span></button>' : ''}
-      <button class="icon-btn" id="refreshBtn" title="Refresh">⟳</button>
+      <button class="icon-btn desk-only" id="refreshBtn" title="Refresh">⟳</button>
+      <button class="me-btn mob-only" id="meBtn" title="Account">${avatarInner(p)}<i></i></button>
     </div>
   </header>
   <nav class="nav">${NAV.filter(([k]) => isOwner() || STAFF_VIEWS.includes(k)).map(([k, ic, t]) => `<button data-nav="${k}"><span class="ic">${ic}</span>${t}</button>`).join('')}</nav>
@@ -307,7 +368,27 @@ function showApp() {
   app.querySelectorAll('.nav, .side').forEach(n => n.onclick = e => { const b = e.target.closest('[data-nav]'); if (b) go(b.dataset.nav); });
   if ($('#bellBtn')) $('#bellBtn').onclick = () => go('low');
   $('#fab').onclick = () => go('sale');
-  $('#refreshBtn').onclick = async () => { await loadItems(); render(); toast('Data refreshed'); };
+  const refresh = async () => { await loadItems(); render(); toast('Data refreshed'); };
+  $('#refreshBtn').onclick = refresh;
+  // mobile: profile ka chhota menu (Refresh, Settings, Logout)
+  $('#meBtn').onclick = e => {
+    e.stopPropagation();
+    const old = $('.me-menu'); if (old) return old.remove();
+    const m = document.createElement('div');
+    m.className = 'me-menu';
+    m.innerHTML = `<div class="me-head"><b>${esc(p.full_name || '')}</b><small>${isOwner() ? '👑 Owner' : '🧾 Cashier'}</small></div>
+      <button data-m="refresh">🔄 Refresh</button><button data-m="menu">⚙️ Settings</button><button data-m="out" class="red">⏻ Logout</button>`;
+    document.body.appendChild(m);
+    const close = () => { m.remove(); document.removeEventListener('click', close); };
+    setTimeout(() => document.addEventListener('click', close));
+    m.onclick = async ev => {
+      const k = ev.target.closest('[data-m]'); if (!k) return;
+      close();
+      if (k.dataset.m === 'refresh') refresh();
+      if (k.dataset.m === 'menu') go('menu');
+      if (k.dataset.m === 'out' && confirm('Logout?')) await sb.auth.signOut();
+    };
+  };
   render();
 }
 // Staff (cashier) sirf yeh screens dekh sakta hai
@@ -390,15 +471,15 @@ async function loadHome() {
     cmp = `${p >= 0 ? '↑' : '↓'} ${Math.abs(p)}% vs yesterday`;
   }
   const credToday = ok.filter(s => s.payment === 'credit' && dayStr(new Date(s.created_at)) === today.key).reduce((t, s) => t + Number(s.total), 0);
-  $('#hToday').textContent = rs(today.total);
+  countUp($('#hToday'), rs(today.total));
   $('#hCmp').textContent = `Cash ${rs(today.total - credToday)} · Udhaar ${rs(credToday)} · ${cmp}`;
   if (isOwner()) udhaarBalances().then(map => {
     const due = Object.values(map).filter(m => m.balance > 0);
-    if ($('#hUdhaar')) { $('#hUdhaar').textContent = rs(due.reduce((t, m) => t + m.balance, 0)); $('#hUdhaarN').textContent = `${due.length} customer${due.length === 1 ? '' : 's'}`; }
+    if ($('#hUdhaar')) { countUp($('#hUdhaar'), rs(due.reduce((t, m) => t + m.balance, 0))); $('#hUdhaarN').textContent = `${due.length} customer${due.length === 1 ? '' : 's'}`; }
   }).catch(() => { if ($('#hUdhaar')) $('#hUdhaar').textContent = '—'; });
   $('#hBills').textContent = `${today.bills} bill${today.bills === 1 ? '' : 's'}`;
-  $('#hYest').textContent = rs(yest.total);
-  $('#hWeek').textContent = rs(days.reduce((s, x) => s + x.total, 0));
+  countUp($('#hYest'), rs(yest.total));
+  countUp($('#hWeek'), rs(days.reduce((s, x) => s + x.total, 0)));
 
   const max = Math.max(...days.map(x => x.total), 1);
   $('#hChart').innerHTML = (max <= 1 ? '<p class="muted center" style="margin:0 0 6px">No sales in the last 7 days yet.</p>' : '') + `<div class="bars">${days.map((x, i) =>
@@ -416,7 +497,7 @@ async function loadHome() {
     const r = await sb.from('sale_lines').select('cost, sales!inner(created_at, voided)')
       .gte('sales.created_at', t0.toISOString()).eq('sales.voided', false).limit(5000);
     const el = $('#hProfit');
-    if (el) el.textContent = r.error ? '—' : rs(today.total - (r.data || []).reduce((s, x) => s + Number(x.cost), 0));
+    if (el) countUp(el, r.error ? '—' : rs(today.total - (r.data || []).reduce((s, x) => s + Number(x.cost), 0)));
   }
 }
 
@@ -520,6 +601,20 @@ function baseQty(line) {
   const o = unitOptions(it).find(x => x.key === line.unit) || unitOptions(it)[0];
   return Math.round((Number(line.qty) || 0) * o.factor * 1000) / 1000;
 }
+// is line ki unit mein zyada se zyada kitna bik sakta hai (stock ke hisaab se)
+function maxQty(line) {
+  const it = itemById(line.item_id);
+  const o = unitOptions(it).find(x => x.key === line.unit) || unitOptions(it)[0];
+  return Math.max(0, Math.floor(Math.max(it.stock, 0) / o.factor * 1000) / 1000);
+}
+// stock se zyada ho to qty kam kar do; true = kam karni padi
+function capQty(line) {
+  if (baseQty(line) <= itemById(line.item_id).stock + 1e-9) return false;
+  const it = itemById(line.item_id);
+  line.qty = String(maxQty(line)); line.amount = calcAmount(line);
+  toast(`${it.name}: only ${fmtQty(it.stock, it.unit)} in stock`, 'bad');
+  return true;
+}
 function lineInfo(l) {
   const it = itemById(l.item_id);
   let s = `${rs(it.sale_price)}/${SHORT[it.unit]} · stock ${fmtQty(it.stock, it.unit)}`;
@@ -583,7 +678,7 @@ function viewSale(v) {
   const step = (i, d) => {
     const l = S.cart[i];
     l.qty = String(Math.max(0, Math.round(((Number(l.qty) || 0) + d) * 1000) / 1000));
-    l.amount = calcAmount(l); renderCart();
+    l.amount = calcAmount(l); capQty(l); renderCart();
   };
   v.onclick = e => {
     const t = e.target, ex = S.saleExtra;
@@ -608,6 +703,7 @@ function viewSale(v) {
     const i = +el.dataset.i, line = S.cart[i];
     if (el.dataset.f === 'qty') {
       line.qty = el.value; line.amount = calcAmount(line);
+      if (capQty(line)) el.value = line.qty;
       $(`[data-i="${i}"][data-f="amount"]`).value = line.amount;
       $(`#info${i}`).innerHTML = lineInfo(line);
     }
@@ -619,7 +715,7 @@ function viewSale(v) {
     if (el.id === 'posCat') { S.posCat = el.value; return renderQuick(); }
     if (el.dataset.f === 'unit') {
       const line = S.cart[+el.dataset.i];
-      line.unit = el.value; line.amount = calcAmount(line); renderCart();
+      line.unit = el.value; line.amount = calcAmount(line); capQty(line); renderCart();
     }
   };
   if (!S.cart.length && deviceType() === 'laptop') setTimeout(() => q.focus(), 50);
@@ -647,16 +743,22 @@ function renderQuick() {
 function addToCart(id, focus) {
   const it = itemById(id);
   if (!it) return;
-  if (it.stock <= 0) toast(`${it.name} is out of stock`, 'bad');
+  if (it.stock <= 0) return toast(`${it.name} is out of stock`, 'bad');
   let idx = S.cart.findIndex(l => l.item_id === id);
   if (idx === -1) {
     const line = { item_id: id, qty: '1', unit: unitOptions(it)[0].key, amount: 0 };
+    if (baseQty(line) > it.stock + 1e-9) return toast(`${it.name}: only ${fmtQty(it.stock, it.unit)} in stock`, 'bad');
     line.amount = calcAmount(line);
     S.cart.push(line); idx = S.cart.length - 1;
   } else {
-    const l = S.cart[idx]; l.qty = String((Number(l.qty) || 0) + 1); l.amount = calcAmount(l);
+    const l = S.cart[idx], next = { ...l, qty: String((Number(l.qty) || 0) + 1) };
+    if (baseQty(next) > it.stock + 1e-9) return toast(`${it.name}: only ${fmtQty(it.stock, it.unit)} in stock`, 'bad');
+    l.qty = next.qty; l.amount = calcAmount(l);
   }
+  sfx('tik');
+  S.flashLine = idx;
   renderCart();
+  S.flashLine = null;
   if (focus) { const inp = $(`[data-i="${idx}"][data-f="qty"]`); if (inp) { inp.focus(); inp.select(); } }
 }
 function renderCart() {
@@ -669,7 +771,7 @@ function renderCart() {
   c.innerHTML = `<div class="cl cl-h"><span>#</span><span>Item</span><span>Qty</span><span>Unit</span><span>Total (Rs)</span><span></span></div>` +
     S.cart.map((l, i) => {
       const it = itemById(l.item_id);
-      return `<div class="cl">
+      return `<div class="cl${i === S.flashLine ? ' flash' : ''}">
         <span class="cl-n">${i + 1}</span>
         <div class="cl-item"><b>${esc(it.name)}</b><small id="info${i}">${lineInfo(l)}</small></div>
         <div class="cl-qty"><button type="button" data-dec="${i}">−</button><input type="number" inputmode="decimal" step="any" min="0" data-i="${i}" data-f="qty" value="${esc(l.qty)}"><button type="button" data-inc="${i}">+</button></div>
@@ -835,12 +937,14 @@ async function saveSale() {
   await loadItems();
   render();
   toast('Sale saved ✔ Stock updated');
-  showReceipt(receipt);
+  sfx('ching');
+  showReceipt(receipt, true);
 }
 
-function showReceipt(r) {
+function showReceipt(r, fresh) {
   const credit = r.payment === 'credit';
   const m = openModal(`
+    ${fresh ? `<div class="done-tick" aria-hidden="true"><svg viewBox="0 0 50 50"><path d="M12 26 l9 9 l17 -19"/></svg></div>` : ''}
     <div id="receipt">
       <div class="c"><b>${esc(C.SHOP_NAME).toUpperCase()}</b><br>${esc(C.SHOP_SUB)}<br><small>${esc(C.SHOP_TAG)}</small>
       ${C.SHOP_ADDRESS ? `<small>${esc(C.SHOP_ADDRESS)}</small>` : ''}${C.SHOP_PHONE ? `<small>📞 ${esc(C.SHOP_PHONE)}</small>` : ''}</div>
@@ -1576,29 +1680,61 @@ async function downloadBackup(btn) {
 function viewMenu(v) {
   const p = S.profile;
   v.innerHTML = pageHead('Settings', 'Your account, staff and app options.') + `
-  <section class="card">
-    <div class="who big"><span class="avatar">${esc(initials(p.full_name))}</span><div><b>${esc(p.full_name || '')}</b><small>${esc(p.email || '')}</small></div>
-    <span class="pill" style="margin-left:auto">${isOwner() ? 'Owner' : 'Staff'}</span></div>
-  </section>
+  ${isOwner() ? `<section class="card prof-card">
+    <div class="prof-pic" id="profPic">${avatarInner(p)}</div>
+    <div class="prof-body">
+      <h3>My Profile</h3>
+      <div class="prof-name"><input id="profName" value="${esc(p.full_name || '')}" maxlength="40" placeholder="Your name">
+        <button class="btn" id="profSave">Save</button></div>
+      <div class="prof-acts">
+        <label class="btn primary small">📷 ${p.avatar ? 'Change photo' : 'Add photo'}<input type="file" accept="image/*" id="profFile" hidden></label>
+        ${p.avatar ? '<button class="btn small" id="profDel">Remove</button>' : ''}
+      </div>
+    </div>
+  </section>` : ''}
   ${isOwner() ? `<section class="card backup-card">
     <div><h3 style="margin:0">📥 Backup</h3><small>Download all shop data as one Excel file. Keep it in Google Drive or on your laptop — once a month is good.</small>
       <small id="lastBackup">${backupAgeText()}</small></div>
     <button class="btn primary" id="dlBackup">📥 Download Backup (Excel)</button>
   </section>` : ''}
+  <section class="card fx-card">
+    <label class="fx-row"><div><b>🔊 Sounds</b><small>Add item, sale complete, error</small></div>
+      <input type="checkbox" class="switch" id="fxSound" ${FX.sound ? 'checked' : ''}></label>
+    <label class="fx-row"><div><b>✨ Animations</b><small>Sale tick, cart flash, dashboard counters</small></div>
+      <input type="checkbox" class="switch" id="fxAnim" ${FX.anim ? 'checked' : ''}></label>
+  </section>
   <section class="card menu-list">
     ${isOwner() ? `<button class="btn" data-go="purchase">🚚 Purchase (stock in)</button>
     <button class="btn" data-go="udhaar">📒 Customers & Khata</button>
     <button class="btn" data-go="low">📋 Inventory & adjustments</button>
     <button class="btn" data-go="users">👥 Users / Staff</button>` : ''}
     <button class="btn" id="install">📲 Install app on phone / laptop</button>
-    <button class="btn" id="pw">🔑 Change my password</button>
-    <button class="btn danger" id="logout">🚪 Logout</button>
-  </section>`;
+    <button class="btn" id="pw">🔑 Change my password</button>  </section>`;
+  // profile save: database mein, phir poori screen dobara (sidebar/header mein nayi photo)
+  const saveProfile = async (patch, msg) => {
+    const { error } = await sb.from('profiles').update(patch).eq('id', p.id);
+    if (error) return toast(errMsg(error), 'bad');
+    Object.assign(S.profile, patch); showApp(); go('menu'); toast(msg);
+  };
+  v.onchange = async e => {
+    if (e.target.id === 'profFile' && e.target.files[0]) {
+      try { await saveProfile({ avatar: await shrinkPhoto(e.target.files[0]) }, 'Photo updated'); }
+      catch (err) { toast(err.message, 'bad'); }
+      return;
+    }
+    if (e.target.id === 'fxSound') { store.set('cc_sound', e.target.checked ? 'on' : 'off'); sfx('tik'); }
+    if (e.target.id === 'fxAnim') { store.set('cc_anim', e.target.checked ? 'on' : 'off'); applyAnimSetting(); }
+  };
   v.onclick = async e => {
     const g = e.target.closest('[data-go]');
     if (g) return go(g.dataset.go);
+    if (e.target.closest('#profDel') && confirm('Remove your photo?')) return saveProfile({ avatar: null }, 'Photo removed');
+    if (e.target.closest('#profSave')) {
+      const n = $('#profName', v).value.trim();
+      if (!n) return toast('Enter your name', 'bad');
+      return saveProfile({ full_name: n }, 'Name saved');
+    }
     if (e.target.closest('#dlBackup')) return downloadBackup(e.target.closest('#dlBackup'));
-    if (e.target.closest('#logout') && confirm('Logout?')) { await sb.auth.signOut(); }
     if (e.target.closest('#install')) {
       if (S.installPrompt) { S.installPrompt.prompt(); S.installPrompt = null; return; }
       openModal(`<h3>Install the app</h3><div class="note">
@@ -1949,4 +2085,9 @@ async function viewUsers(v) {
     </select></div></div>`).join('');
 }
 
+// sidebar ka logout button
+document.addEventListener('click', async e => {
+  if (e.target.closest('#sideLogout') && confirm('Logout?')) await sb.auth.signOut();
+});
+applyAnimSetting();
 init();

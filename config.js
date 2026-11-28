@@ -6,7 +6,7 @@ window.APP_CONFIG = {
 
   SHOP_NAME: 'Ibrar & Brothers',
   SHOP_SUB: 'Cool Care',
-  SHOP_TAG: 'AC & Fridge Spare Parts',
-  SHOP_PHONE: '',      // bill par phone number, maslan '0300-1234567'
-  SHOP_ADDRESS: ''     // bill par address
+  SHOP_TAG: 'Wholesale AC & Fridge Spare Parts',
+  SHOP_PHONE: '0303-3028564 · 0306-8298962',   // bill par phone number
+  SHOP_ADDRESS: 'Mirpurkhas Road, near Khatm-e-Nabuwwat Chowk, Digri'
 };

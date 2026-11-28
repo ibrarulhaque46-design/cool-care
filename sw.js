@@ -1,7 +1,7 @@
-// App ki files phone mein save rakhta hai taake app jaldi khule.
+﻿// App ki files phone mein save rakhta hai taake app jaldi khule.
 // Data (stock, sale) hamesha internet se naya aata hai.
-const CACHE = 'cool-care-v9';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.json', 'icons/icon.svg', 'icons/icon-192.png', 'img/shop.svg'];
+const CACHE = 'cool-care-v10';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.json', 'icons/icon.svg', 'icons/icon-192.png', 'img/shop.svg', 'img/logo.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
